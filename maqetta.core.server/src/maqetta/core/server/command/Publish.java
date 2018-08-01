@@ -3,14 +3,15 @@ package maqetta.core.server.command;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SimpleTimeZone;
 
-import javax.mail.MessagingException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -25,13 +26,14 @@ import org.davinci.server.review.cache.ReviewCacheManager;
 import org.davinci.server.review.user.IDesignerUser;
 import org.davinci.server.review.user.Reviewer;
 import org.davinci.server.user.IUser;
+import org.davinci.server.util.JSONWriter;
+import org.eclipse.orion.server.useradmin.UserEmailUtil;
 import org.maqetta.server.Command;
 import org.maqetta.server.ServerManager;
-import org.maqetta.server.mail.SimpleMessage;
-import org.maqetta.server.mail.SmtpPop3Mailer;
 
+@SuppressWarnings("restriction")
 public class Publish extends Command {
-	SmtpPop3Mailer mailer = SmtpPop3Mailer.getDefault();
+	
 
     @Override
 	public void handleCommand(HttpServletRequest req, HttpServletResponse resp,
@@ -39,29 +41,31 @@ public class Publish extends Command {
 
 		Version version = null;
 		Boolean isUpdate = req.getParameter("isUpdate") != null ? 
-				(req.getParameter("isUpdate").equals("true") ? true : false) : false;
+				req.getParameter("isUpdate").equals("true") : false;
 		String vTime = req.getParameter("vTime");
 		Boolean isRestart = req.getParameter("isRestart") != null ? 
-				(req.getParameter("isRestart").equals("true") ? true : false) : false;
+				req.getParameter("isRestart").equals("true") : false;
 		String emailsStr = req.getParameter("emails");
 		String message = req.getParameter("message");
 		String versionTitle = req.getParameter("versionTitle");
 		String[] resources = req.getParameterValues("resources");
 		String desireWidth = req.getParameter("desireWidth");
 		String desireHeight = req.getParameter("desireHeight");
-		Boolean savingDraft = req.getParameter("savingDraft") == null ? false : true;
+		Boolean savingDraft = req.getParameter("savingDraft") != null;
 		String dueDate = req.getParameter("dueDate");
 		Boolean receiveEmail = req.getParameter("receiveEmail") != null ? 
-				(req.getParameter("receiveEmail").equals("true") ? true : false) : false;
+				req.getParameter("receiveEmail").equals("true") : false;
+		Boolean zazl = req.getParameter("zazl") != null;
 
 		String[] emails = emailsStr.split(",");
 		List<Reviewer> reviewers = new ArrayList<Reviewer>();
 
-		IDesignerUser du = ReviewManager.getReviewManager().getDesignerUser(user.getUserName());
+		IDesignerUser du = ReviewManager.getReviewManager().getDesignerUser(user);
 
 		if (!isUpdate) {
 			Date currentTime = new Date();
-			SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
+			SimpleDateFormat formatter = new SimpleDateFormat(Constants.DATE_PATTERN_SHORT);
+			formatter.setCalendar(Calendar.getInstance(new SimpleTimeZone(0, "GMT")));
 			String timeVersion = formatter.format(currentTime);
 			
 			String id = null;
@@ -91,7 +95,7 @@ public class Publish extends Command {
 		}
 		
 		//Deal with reviewers the designer has added to the review
-		ReviewerVersion reviewerVersion = new ReviewerVersion(user.getUserName(), version.getTime());
+		ReviewerVersion reviewerVersion = new ReviewerVersion(user.getUserID(), version.getTime());
 		Reviewer tmpReviewer = null;
 		for (int i = 0; i < emails.length; i++) {
 			String email = emails[i];
@@ -103,12 +107,12 @@ public class Publish extends Command {
 		}
 
 		//Add the designer as a reviewer
-		tmpReviewer = ReviewManager.getReviewManager().getReviewer(user.getUserName(), user.getPerson().getEmail());
+		tmpReviewer = ReviewManager.getReviewManager().getReviewer(user.getUserID(), user.getPerson().getEmail());
 		tmpReviewer.addReviewerVersion(reviewerVersion);
 		reviewers.add(tmpReviewer);
 
 		//Handle fake reviewer (if necessary)
-		String fakeReviewer = ServerManager.getServerManger().getDavinciProperty(Constants.FAKE_REVIEWER);
+		String fakeReviewer = ServerManager.getServerManager().getDavinciProperty(Constants.FAKE_REVIEWER);
 		if (fakeReviewer != null) {
 			tmpReviewer = ReviewManager.getReviewManager().getReviewer("fakeReviewer", fakeReviewer);
 			tmpReviewer.addReviewerVersion(reviewerVersion);
@@ -135,58 +139,57 @@ public class Publish extends Command {
 			project.setOwnerId(du.getName());
 			ReviewCacheManager.$.republish(project,vTime, version);
 		}
+		
+		JSONWriter writer = new JSONWriter(true);
+		writer.startObject();
+		writer.addField("result", "OK");
+		writer.addField("version", version.getTime());
+		writer.addField("designer", du.getName());
 		if (savingDraft) {
-			ReviewManager.getReviewManager().saveDraft(user.getUserName(), version);
-			this.responseString = "OK";
-			return;
-		}
-
-		ReviewManager.getReviewManager().publish(user.getUserName(), version);
-
-		String requestUrl = req.getRequestURL().toString();
-		// set is used to filter duplicate email. Only send mail to one email
-		// one time.
-		Set<String> set = new HashSet<String>();
-		for (Reviewer reviewer : reviewers) {
-			String mail = reviewer.getEmail();
-			if (mail != null && !mail.equals("") && set.add(mail)) {
-				String url = getUrl(user, version.getTime(), requestUrl, mail);
-				String htmlContent = getHtmlContent(user, message, url);
-				notifyRelatedPersons(Utils.getCommonNotificationId(), mail,
-						Utils.getTemplates().getProperty(Constants.TEMPLATE_INVITATION_SUBJECT_PREFIX) + " " + versionTitle, htmlContent);
+			ReviewManager.getReviewManager().saveDraft(du, version);
+		} else {
+			ReviewManager.getReviewManager().publish(du, version);
+	
+			String requestUrl = req.getRequestURL().toString();
+			// set is used to filter duplicate email. Only send mail to one email
+			// one time.
+			Set<String> set = new HashSet<String>();
+			String emailResult = null;
+			for (Reviewer reviewer : reviewers) {
+				String mail = reviewer.getEmail();
+				if (mail != null && !mail.equals("") && set.add(mail)) {
+					String url = ReviewManager.getReviewManager().getReviewUrl(user.getUserID(), version.getTime(), requestUrl, zazl);
+					String htmlContent = getHtmlContent(user, message, url);
+					String subject = Utils.getTemplates().getProperty(Constants.TEMPLATE_INVITATION_SUBJECT_PREFIX) + " " + versionTitle;
+					emailResult = notifyRelatedPersons(mail, subject, htmlContent);
+				}
+			}
+			if (emailResult != null) {
+				writer.addField("emailResult", emailResult);
 			}
 		}
-		if ( this.responseString == null )
-			this.responseString = "OK";
+		writer.endObject();
+		this.responseString = writer.getJSON();
+        resp.setContentType("application/json;charset=UTF-8");
 	}
 
-	private void notifyRelatedPersons(String from, String to, String subject,
-			String htmlContent) {
-		SimpleMessage email = new SimpleMessage(from, to, null, null, subject, htmlContent);
+	private String notifyRelatedPersons(String to, String subject, String htmlContent) {
 		try {
-			if(mailer != null){
-				mailer.sendMessage(email);
-			}else{
-				this.responseString = htmlContent;
-				System.out.println("Mail server is not configured. Mail notificatioin is cancelled.");
-			}
-		} catch (MessagingException e) {
-			this.responseString = htmlContent;
-			e.printStackTrace();
+			UserEmailUtil.getUtil().sendEmail(subject, htmlContent, to);
+			return "OK";
+		} catch (Exception e) {
+			// Email server not reachable or not configured. Return email contents to client.
+			// Note: We do not return an error on the request since sending an email notification
+			// is a secondary goal; the primary goal is to add a new review session.
+			return htmlContent;
 		}
 	}
 
 	private String getHtmlContent(IUser user, String message, String url) {
 		Map<String, String> props = new HashMap<String, String>();
-		props.put("username", user.getUserName());
+		props.put("displayName", user.getPerson().getDisplayName());
 		props.put("message", message);
 		props.put("url", url);
-		props.put("email", user.getPerson().getEmail());
-		return Utils.substitude(Utils.getTemplates().getProperty(Constants.TEMPLATE_INVITATION), props);
-	}
-
-	private String getUrl(IUser user, String version, String requestUrl, String reviewer) {
-		String host = requestUrl.substring(0, requestUrl.indexOf('/', "http://".length()));
-		return host + "/review/" + user.getUserName() + "?revieweeuser=" + user.getUserName()+ "&version=" + version;
+		return Utils.substitute(Utils.getTemplates().getProperty(Constants.TEMPLATE_INVITATION), props);
 	}
 }

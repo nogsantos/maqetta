@@ -51,10 +51,9 @@ define(["dojo/_base/declare",
 		
 		okButton : function(){
 			var newTheme = this._themeChooser.attr('value');
-			this.onClose();
 			
 			davinci.Workbench.openEditor({
-				fileName: newTheme.file,
+				fileName: newTheme.getFile(),
 				content: newTheme});
 		},
 		cancelButton : function(){

@@ -12,31 +12,22 @@ define({ root:
 		"by":"by",
 		"edit":"Edit",
 		"reply":"Reply",
-		"typeLabel":"Type",
-		"severityLevel":"Severity",
-		"statusLabel":"Status",
 		
 		//CommentForm.js
 		"subjectPlaceHolder":"Subject",
 		"submit":"Submit",
-		"unassigned":"Unassigned",
-		"requirement":"Requirement",
-		"task":"Task",
-		"defect":"Defect",
-		"low":"Low",
-		"medium":"Medium",
-		"high":"High",
 		"comment":"Comment",
 		"commentReply":"Comment reply",
 		"buttonCancel":"Cancel",
 		
 		//CommentForm.html
-		//Comment, Type, Severity defined above
+		//Comment defined above
 		
 		//InfoCard.html
 		"yourRole":"Your Role",
 		"dueBy":"Due by",
 		"createdBy":"Created by",
+		"creationDate":"Creation date",
 		"artifactsInRev":"Artifacts In Review",
 		"reviewers":"Reviewers",
 		
@@ -56,6 +47,7 @@ define({ root:
 		"action":"Action",
 		"add":"Add",
 		"errorPublish":"Error to publish review session , response=${0}, reason=${1}",
+		"defaultReviewTitle": "review ${0}",
 		
 		//PublisherWizard.html
 		"generalInfo":" General Information",
@@ -78,6 +70,8 @@ define({ root:
 		//MailFailurDialogContent.html
 		"inviteNotSent":"Invitation was not sent",
 		"mailFailureMsg":"It seems that the mail service is down or not configured. Please copy the invitation below and send it manually.",
+		"commentNotSent":"Commenters not updated",
+		"commentMailFailureMsg":"It seems that the mail service is down or not configured. Please copy the comment text below and send it manually.",
 		
 		//ReviewToolBarText.js
 		'ReviewToolBarText':'Note: The page below is a "live" web application (e.g., may respond to mouse clicks or touches). You can add comments and on-screen annotations using the Comments palette. You can change the currently active scene in the Scenes palette.'

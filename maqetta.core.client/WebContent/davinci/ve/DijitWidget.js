@@ -1,4 +1,5 @@
 define([
+	"require",
 	"dojo/_base/declare",
 	"dojo/_base/window",
 	"dojo/_base/lang",
@@ -8,6 +9,7 @@ define([
 	"./metadata"
 //	"./widget"
 ], function(
+	require,
 	declare,
 	dwindow,
 	dlang,
@@ -23,7 +25,10 @@ return declare("davinci.ve.DijitWidget", _Widget, {
 
 	isDijitWidget: true,
 
-	constructor: function(mixin, node, dijitWidget, metadata, srcElement) {
+	//FIXME: Horrible constructor design.
+	//For CreateTool, all 6 params are passed in, but dijitWidget and widgetType have same value
+	//For file opening, only dijitWidget (3rd param) and widgetType (6th param) are passed in.
+	constructor: function(mixin, node, dijitWidget, metadata, srcElement, widgetType) {
 		if (typeof dijitWidget === 'string') {
 			// XXX we should just add dojo type in metadata and remove this code
 			// add dojo type to node
@@ -48,10 +53,7 @@ return declare("davinci.ve.DijitWidget", _Widget, {
 
 			// instantiate widget, in context of editor iframe
 			var instances = win.require('dojo/parser').instantiate(
-				[{
-					type: dijitWidget,
-					node: node
-				}],
+				[node],
 				mixin,
 				// Don't allow `instantiate()` to call the widget's `startup()`;
 				// it's called later by Maqetta.
@@ -74,12 +76,16 @@ return declare("davinci.ve.DijitWidget", _Widget, {
 			dijitWidget.domNode._dvWidget = this;
 			this.isLayoutContainer = dijitWidget.isLayoutContainer;
 		} else {
-			this.type = dijitWidget.declaredClass;
+			if(!widgetType){
+				this.type = dijitWidget.declaredClass.replace(/\./g, "/"); //FIXME: not a safe association;
+			}else{
+				this.type = widgetType.replace(/\./g, "/");
+			}
 		}
 
 		var allowedChild = davinci.ve.metadata.getAllowedChild(this.type);
 		this.acceptsHTMLChildren = allowedChild[0] === 'ANY' ||
-								   allowedChild.indexOf('HTML') !== -1;
+								   allowedChild.toString().toUpperCase().indexOf('HTML') !== -1;
 		this.dijitWidget=dijitWidget;
 		this.containerNode=dijitWidget.containerNode;
 		this.styleNode=dijitWidget.styleNode;
@@ -87,9 +93,13 @@ return declare("davinci.ve.DijitWidget", _Widget, {
 	},
 
 	getParent: function() {
-		var widget;
+		if(!this.dijitWidget || !this.dijitWidget.domNode || !this.dijitWidget.domNode.parentNode){
+			return;
+		}
+		var veWidget = require("davinci/ve/widget");
+		var widget = this.dijitWidget;
 		do{
-			widget = require("davinci/ve/widget").getEnclosingWidget(this.dijitWidget.domNode.parentNode);
+			widget = veWidget.getEnclosingWidget(widget.domNode.parentNode);
 		}while(widget && widget.dijitWidget && widget.dijitWidget.declaredClass.split(".").pop().charAt(0) == "_");
 			// skip intermediates, like _AccordionInnerContentPane
 			//TODO: use widget.getParent() and have it support this behavior?
@@ -105,14 +115,25 @@ return declare("davinci.ve.DijitWidget", _Widget, {
 
 		if (davinci.ve.metadata.getAllowedChild(this.type)[0] !== 'NONE') {
 			this.dijitWidget.getChildren().forEach(function(child) {
-				if (attach) {
-					children.push(require("davinci/ve/widget").getWidget(child.domNode));
-				} else {
-                    var widget = child.domNode && child.domNode._dvWidget;
-                    if (widget) {
-                        children.push(widget);
-                    }
-                }
+				// The "_maqNotDVWidget" property on a Dijit indicates that even though
+				// Dojo treats the given DOM node as a child, Maqetta should ignore it
+				// This was necessary to deal with #3425 because Heading creates a real
+				// widget (with data-dojo-type and everything) under the hood 
+				// when the 'back' property gets a value. 
+				// To use this feature, Helper functions on an ancestor
+				// widget need to put this property on any child widgets that the Maqetta
+				// page editor needs to ignore.
+				// FIXME: There has to be a cleaner way of doing this.
+				if(!child._maqNotDVWidget){
+					if (attach) {
+						children.push(require("davinci/ve/widget").getWidget(child.domNode));
+					} else {
+	                    var widget = child.domNode && child.domNode._dvWidget;
+	                    if (widget) {
+	                        children.push(widget);
+	                    }
+	                }
+				}
 			});
 		}
 		return children;
@@ -129,69 +150,30 @@ return declare("davinci.ve.DijitWidget", _Widget, {
 		}
 	},
 	
-	addChild: function(child, index) {
-	    if (this.dijitWidget.addChild && child.dijitWidget) {
-	        if (typeof index === 'number' && index >= 0) {
-				var children = this.getChildren();
-				if(index < children.length) {
-                    this._srcElement.insertBefore(child._srcElement,
-                            children[index]._srcElement);
-				}else{
-					this._srcElement.addChild(child._srcElement);
-				}
-                if (! this.acceptsHTMLChildren) {
-            		this._addChildHelper(child.dijitWidget, index);
-                } else {
-                    // See comment for _addChildHooked() for more info.
-                    this._addChildHooked(child.dijitWidget, index);
-                }
-	        } else {
-                this._srcElement.addChild(child._srcElement);
-                this._addChildHelper(child.dijitWidget);
-            }
-        } else {
-			this.inherited(arguments);
-		}
-	},
-	
-	_addChildHelper: function(dijitWidget, index) {
-		var helper = this.getHelper();
-		if (helper && helper.addChild) {
-			helper.addChild(this, dijitWidget, index);
+	_addChildToDom: function(child, index) {
+		// Dijit's addChild() only works for widgets whose children are all Dijit
+		// widgets themselves.  Therefore, we only call that function if the
+		// widget does not accept HTML children.
+		if (!this.acceptsHTMLChildren) {
+			this.dijitWidget.addChild(child.dijitWidget, index);
 		} else {
-			this.dijitWidget.addChild(dijitWidget, index);
+			this.inherited(arguments);
+
+			// See impl of dijit._Container.addChild()
+			var dw = child.dijitWidget;
+			if (dw && this.dijitWidget._started && !dw._started) {
+				child.startup();
+			}
 		}
 	},
 
-    // #514, #741, #856 - Some Dojox Mobile containers mixin dijit._Container
-    // (thereby adding addChild()), yet still allow HTML (non-Dojo)
-    // children. We still need to call addChild() when the child is another
-    // Dijit/Dojox widget, but there is a problem -- internally, the Dojo
-    // code only returns children which are Dijit/Dojox widgets, ignoring
-    // any of our HTML widgets. To work around this, we temporarily replace
-    // the Dijit/Dojox widget's getChildren() with our own, which returns all
-    // Maqetta managed children.
-    _addChildHooked: function(widget, index) {
-        var parentWidget = this.dijitWidget,
-            _getChildren = parentWidget.getChildren;
-        parentWidget.getChildren = dojo.hitch(this, this.getChildren);
-        parentWidget.addChild(widget, index);
-        parentWidget.getChildren = _getChildren;
-    },
-
-    removeChild: function(/*Widget*/child) {
-        if (!child) {
-            return;
-        }
-
+    _removeChildFromDom: function(/*Widget*/child) {
         if (this.dijitWidget.removeChild && child.dijitWidget) {
             this.dijitWidget.removeChild(child.dijitWidget);
-            this._srcElement.removeChild(child._srcElement);
         } else {
             this.inherited(arguments);
         }
     },
-
 
     _getPropertyValue: function(name) {
         return this.dijitWidget.get(name);
@@ -202,12 +184,21 @@ return declare("davinci.ve.DijitWidget", _Widget, {
 	},
 
 	isLayout: function() {
-		return this.dijitWidget.isInstanceOf(dijit.layout._LayoutWidget);
+		var context = this.getContext();
+		// make sure we are comparing against the same two classes within same two documents
+		var djit = context.getDijit();
+		var retval = this.dijitWidget.isInstanceOf(djit.layout._LayoutWidget);
+		return retval;
 	},
 
 	resize: function() {
-		if (this.dijitWidget.resize) {
-			this.dijitWidget.resize();
+		var helper = this.getHelper();
+		if (helper && helper.resize) {
+			helper.resize(this);
+		} else {
+			if (this.dijitWidget.resize) {
+				this.dijitWidget.resize();
+			}
 		}
 	},
 

@@ -1,6 +1,7 @@
 define(["dojo/_base/declare",
         "davinci/ve/widget",
-        "davinci/ve/metadata"], function(declare, widget, metadata){
+        "davinci/ve/metadata",
+		"davinci/ve/utils/GeomUtils"], function(declare, widget, metadata, GeomUtils){
 
 return declare("davinci.ve.tools._Tool", null, {
 
@@ -8,7 +9,14 @@ return declare("davinci.ve.tools._Tool", null, {
 		return this._target;
 	},
 
-	_setTarget: function(target){
+	/**
+	 * Update the editFeedback box(es) that are superimposed over the canvas to capture
+	 * mouse events over primitive widgets, thereby preventing default mouse event handlers
+	 * on widgets from receiving events during page editing
+	 * @param {object} target  A DOM node which (in almost all cases) has received a mouseover event
+	 * @param {object) event  The event object
+	 */
+	_setTarget: function(target, event){
 		
 		if(!this._targetOverlays){
 			this._targetOverlays = [];
@@ -60,14 +68,8 @@ return declare("davinci.ve.tools._Tool", null, {
 			//target is what we calculated for "w"
 			this._target = w;
 			
-			//Deal with the style node
-			var node = w.getStyleNode();
-			var box = this._context.getDojo().position(node, true);
-			box.l = box.x;
-			box.t = box.y;
-			
 			//Change the dimensions of the overlay region based on the target
-			this._updateTargetOverlays();
+			this._updateTargetOverlays(event);
 
 			//Insert overlay element(s)
 			this._insertTargetOverlays();
@@ -79,7 +81,7 @@ return declare("davinci.ve.tools._Tool", null, {
 	},
 	
 	// Calculate bounds for "target" overlay rectangle(s)
-	_updateTargetOverlays: function(){
+	_updateTargetOverlays: function(event){
 		//Let's clear out overlay regions array
 		this._removeTargetOverlays();
 		if(!this._target){
@@ -113,13 +115,47 @@ return declare("davinci.ve.tools._Tool", null, {
 					return;
 				}
 			} 
-			
+
+			var left = domNode.offsetLeft;
+			var top = domNode.offsetTop;
+			var width = domNode.offsetWidth;
+			var height = domNode.offsetHeight;
+
+			if(event){
+				
+				// This code addresses #2136, where CSS transforms shift the widget and 
+				// therefore offsetLeft/Top/Width/Height are not reliable indicators
+				// of a node's bounds. Unfortunately, there are no getBoundingBox APIs
+				// in browsers today that give the post-transform bounds on a node.
+				// However, at least WebKit is smart enough to have onmouseover event
+				// deal with the post-transform location of a particular node.
+				// So, to deal with this issue, increase the bounding box to include pageX/pageY.
+				var diff;
+				var borderBoxPageCoords = GeomUtils.getBorderBoxPageCoordsCached(domNode);
+				if(event.pageX < borderBoxPageCoords.l){
+					diff = borderBoxPageCoords.l - event.pageX;
+					left -= diff;
+					width += diff;
+				}
+				if(event.pageY < borderBoxPageCoords.t){
+					diff = borderBoxPageCoords.t - event.pageY;
+					top -= diff;
+					height += diff;
+				}
+				if(event.pageX > borderBoxPageCoords.l + borderBoxPageCoords.w){
+					diff = event.pageX - (borderBoxPageCoords.l + borderBoxPageCoords.w);
+					width += diff;
+				}
+				if(event.pageY > borderBoxPageCoords.t + borderBoxPageCoords.h){
+					diff = event.pageY - (borderBoxPageCoords.t + borderBoxPageCoords.h);
+					height += diff;
+				}
+			}
+
 			//No special overlay regions, so let's just do the normal thing and calculate
 			//overlay region dimensions ourselves
 			var overlay =
-					this._getNewTargetOverlay(domNode, domNode.offsetLeft,
-							domNode.offsetTop, domNode.offsetWidth,
-							domNode.offsetHeight, maxZIndex);	
+					this._getNewTargetOverlay(domNode, left, top, width, height, maxZIndex);	
 
 			//Add new overlay div to our overall list
 			this._targetOverlays.push(overlay);

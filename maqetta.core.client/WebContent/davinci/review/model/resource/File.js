@@ -1,8 +1,10 @@
 define([
 	"dojo/_base/declare",
+	"davinci/Runtime",
 	"davinci/model/resource/File",
-	"davinci/model/Path"
-], function(declare, File, Path) {
+	"davinci/model/Path",
+	"dojo/Deferred"
+], function(declare, Runtime, File, Path, Deferred) {
 
 return declare("davinci.review.model.resource.File", File, {
 
@@ -16,12 +18,19 @@ return declare("davinci.review.model.resource.File", File, {
 	getLabel: function() {
 		var path = new Path(this.name);
 		var segments = path.getSegments();
-		return label = segments[segments.length-1]+".rev";
-
+		var editorExtension = Runtime.getExtension("davinci.editor", function (extension){
+			return extension.id === "davinci.review.CommentReviewEditor";
+		});
+		var extension = "."+editorExtension.extensions;
+		return label = segments[segments.length-1] + extension;
 	},
 
-	getText: function() {
+	getContentSync: function() {
 		return "";
+	},
+
+	getContent: function() {
+		return new Deferred().resolve("");
 	},
 
 	removeWorkingCopy: function() {

@@ -1,15 +1,15 @@
 define([
     	"dojo/_base/declare",
-    	"dojo/DeferredList",
-
+    	"dojo/promise/all",
     	"./Workbench",
+    	"./Runtime",
     	"./library",
     	"./workbench/Preferences",
     	"./model/Path",
     	"./html/HTMLFile",
     	"./model/Factory",
     	"system/resource"
-], function(declare, DeferredList, Workbench, Library, Preferences, Path, HTMLFile, Factory, systemResource) {
+], function(declare, all, Workbench, Runtime, Library, Preferences, Path, HTMLFile, Factory, systemResource) {
 
 	var Theme = {
 		TEMP_CLONE_PRE: "clone_",
@@ -64,42 +64,65 @@ define([
 	CloneTheme: function(name, version, selector, directory, originalTheme, renameFiles){
 	    
 		var deferreds = [];
-		var fileBase = originalTheme.file.parent;
+		var fileBase = originalTheme.getFile().parent;
 		var themeRootPath = new Path(directory).removeLastSegments(0);
 		var resource = systemResource.findResource(themeRootPath.toString());
 		if (resource.readOnly()) {
 			resource.createResource();
 		}
-		systemResource.copy(fileBase, directory, true);
+		systemResource.createResource(directory, true);
 		var themeRoot = systemResource.findResource(directory);
-		var fileName = originalTheme.file.getName();
-		/* remove the copied theme */
-		var sameName = (name==originalTheme.name);
-		var themeFile = null;
-		if(!sameName){
-			var badTheme = systemResource.findResource(directory + "/" + fileName);
-			badTheme.deleteResource();
-		}
+		var fileName = originalTheme.getFile().getName();
 		var directoryPath = new Path(themeRoot.getPath());
 		var lastSeg = directoryPath.lastSegment();
 		/* create the .theme file */
-		if (!sameName) {
-			themeFile = themeRoot.createResource(lastSeg + ".theme");
-		} else{
-			themeFile = systemResource.findResource(directory + "/" + fileName);
-		}
+		var themeFile = themeRoot.createResource(lastSeg + ".theme");
+		var themeCssFile = themeRoot.createResource(lastSeg + ".css"); // create the delta css file
+		var themePath = this.getThemeLocation();
+		var orgPath = originalTheme.getFile().parent.getPath();
+		
+		function adjustPaths(fileNames){
+			// #23 adjust for path to where file in relation to the new theme is located
+			var ret = [];
+			fileNames.forEach(function(fileName){
+				var file = systemResource.findResource(orgPath + "/" + fileName);
+				var filePath = new Path(file.getPath());
+				var relFilePath = filePath.relativeTo('./'+themePath, true);
+				var relativePath = '..';
+				for (var i = 0; i < relFilePath.segments.length; i++){
+					relativePath = relativePath + '/'+relFilePath.segments[i];
+				}
+				ret.push(relativePath);
+			});
+			return ret;
+		};
+		
+		var themeEditorHtmls = adjustPaths(originalTheme.themeEditorHtmls); // adjust the path of the html files
+		var meta = adjustPaths(originalTheme.meta); // adjust the path of the meta files
+		var importFiles = adjustPaths(originalTheme.files); // adjust the path of the css files
+		var imports = ' ';
+		// now add the css files from the old theme to the delta css file as imports
+		importFiles.forEach(function(fileName){
+			imports = imports + '@import url("' +fileName+'");'; 
+		});
+	
 		var themeJson = {
-			className: selector,
+			className: originalTheme.className, // #23 selector,
 			name: name,
 			version: version || originalTheme.version, 
 			specVersion: originalTheme.specVersion,
-			files: originalTheme.files,
-			meta: originalTheme.meta,
-			themeEditorHtmls: originalTheme.themeEditorHtmls,
+			files: [''+lastSeg+'.css'], // #23 only add the delta css
+			meta: meta,  
+			themeEditorHtmls: themeEditorHtmls, 
 			useBodyFontBackgroundClass: originalTheme.useBodyFontBackgroundClass
 		};
 		if(originalTheme.helper){
-		    themeJson.helper = originalTheme.helper; 
+			if (originalTheme.helper.declaredClass) {
+				themeJson.helper = originalTheme.helper.declaredClass;
+			} else {
+				// still string
+				themeJson.helper = originalTheme.helper;
+			}			
 		}
 		if(originalTheme.base){
 	        themeJson.base = originalTheme.base; 
@@ -107,181 +130,106 @@ define([
 		if(originalTheme.type){
 	        themeJson.type = originalTheme.type; 
 	    }
-		var oldClass = originalTheme.className;
-		var toSave = {};
-		/* re-write CSS Selectors */
-		for (var i = 0, len = themeJson.files.length; i < len; i++) {
-			var fileUrl = directoryPath.append(themeJson.files[i]);
-			var resource = systemResource.findResource(fileUrl);
-			if(!sameName && renameFiles && resource.getName().indexOf(oldClass) > -1){
-				var newName = resource.getName().replace(oldClass, selector);
-				resource.rename(this.TEMP_CLONE_PRE+newName); // for caching reasons rename to temp file name, will rename later
-				themeJson.files[i] =newName;
+		if (originalTheme.conditionalFiles){
+			themeJson.conditionalFiles = originalTheme.conditionalFiles; 
+			var conditionalFiles = adjustPaths(originalTheme.conditionalFiles); // adjust the path of the css files
+			for (var i = 0; i < themeJson.conditionalFiles.length; i++) {
+				var conditionalFile = themeRoot.createResource(themeJson.conditionalFiles[i]); // create the delta css file
+				deferreds.push(conditionalFile.setContents('@import url("' +conditionalFiles[i]+'");'));
 			}
-			var cssModel = Factory.getModel({url:resource.getPath(),
-				includeImports: true,
-				loader:function(url){
-					var r1=  systemResource.findResource(url);
-					return r1.getText();
-				}
-			});
-			toSave[cssModel.url] = cssModel;
-			var elements = cssModel.find({elementType: 'CSSSelector', cls: oldClass});
-			for(var i=0;i<elements.length;i++){
-				elements[i].cls = selector;
-				
-			}
-		}
-		deferreds.push(themeFile.setContents(JSON.stringify(themeJson)));
-		
-		for(var name in toSave){
-		    deferreds.push(toSave[name].save());
-		}
-		/* re-write metadata */
-		var metaToRename = {};
-		for (var i = 0, len = themeJson.meta.length; i < len; i++) {
-			var fileUrl = directoryPath.append(themeJson.meta[i]);
-			var file = systemResource.findResource(fileUrl.toString());
-			file.rename(this.TEMP_CLONE_PRE+file.name); // for caching reasons rename to temp file name, will rename later
-			metaToRename[file.getURL()] = file;
-			var contents = file.getText();
-			var newContents = contents.replace(new RegExp(oldClass, "g"), selector);
-			deferreds.push(file.setContents(newContents));
 			
 		}
-		/* rewrite theme editor HTML */
-		for (var i = 0, len = themeJson.themeEditorHtmls.length; i < len; i++) {
-			var fileUrl = directoryPath.append(themeJson.themeEditorHtmls[i]);
-			var file = systemResource.findResource(fileUrl.toString());
-			var contents = file.getText();
-			var htmlFile = new HTMLFile(fileUrl);
-			htmlFile.setText(contents,true);
-			var element = htmlFile.find({elementType: 'HTMLElement', tag: 'body'}, true);
-			// #1024 leave other classes on the body only replace the target
-			var modelAttribute = element.getAttribute('class');
-	        if (!modelAttribute){
-	             modelAttribute = selector; 
-	        } else {
-	             modelAttribute = modelAttribute.replace(oldClass, selector);
-	        }
-	        element.setAttribute('class',modelAttribute); //#1024
-	        deferreds.push(htmlFile.save());
-		}
-	    var defs = new DeferredList(deferreds);
-		Library.themesChanged();
-		defs.toRename = { cssFiles: toSave, metaFile: metaToRename}; // need to save the cssFiles to rename from temp name after saves are done, in postClone
-		return defs;
+		var d = themeFile.setContents(JSON.stringify(themeJson));
+		d.themeFile = themeFile;
+		deferreds.push(d);
+		deferreds.push(themeCssFile.setContents(imports));
+		var ret = {promise:all(deferreds),  themeFile: themeFile};
+		return ret; 
 	},
 	
-	postClone: function(filesToRename){
-		// We have to rename the css files to the correct name, this is to trick the browser cache
-		var deferreds = [];
-		var files = filesToRename.cssFiles;
-		for(var name in files){
-			var r = files[name];
-			var f = r.getResource();
-			var name = f.name.replace(this.TEMP_CLONE_PRE, "");
-			f.rename(name);
-			var cssModel = Factory.getModel({url:f.getPath(),
-				includeImports: true,
-				loader:function(url){
-					var r1=  systemResource.findResource(url);
-					return r1.getText();
-				}
-			});
-			var def = cssModel.save();
-			deferreds.push(def);
-		}
-		files = filesToRename.metaFile;
-		for(var name in files){
-			var f = files[name];
-			var name = f.name.replace(this.TEMP_CLONE_PRE, "");
-			f.rename(name);
-			var contents = f.getText();
-			deferreds.push(f.setContents(contents));
-		}
-		return  new DeferredList(deferreds);
-	},
-
 	getHelper: function(theme){
 		if (!theme) { return; } 
-	    if (theme._helper){
-	        return theme._helper;
+	    if (theme.helper && typeof(theme.helper) != 'string'){
+	        return theme.helper;
 	    }
 	    var helper = theme.helper;
 	    if (helper) {
+	    	var deferred = new dojo.Deferred();
 			require([helper], function(module) {
+				module.declaredClass = helper; // save the class string for use by clone theme
 				helper = module;
+				deferred.resolve({helper: helper});
 			});
-			return helper;
+			//return helper;
+			return deferred;
 	        }
 	},
 
-	getThemeSet: function(context){
-	    
-	    var returnThemeSet;
-	    var dojoThemeSets = Preferences.getPreferences("maqetta.dojo.themesets", Workbench.getProject());
+	getThemeSet: function(context) {
+
+		var dojoThemeSets = Theme.getThemeSets( Workbench.getProject()),
+	    	mobileTheme = dojo.clone(this.dojoMobileDefault),
+	    	themeSet;
 	    if (!dojoThemeSets){ 
 	        dojoThemeSets =  this.dojoThemeSets;
 	    }
 	    dojoThemeSets = dojo.clone(dojoThemeSets); // don't want to add to the real setting object
-	    if (context){
+
+	    if (context) {
 	        // find the themeMap
-	        var htmlElement = context._srcDocument.getDocumentElement();
-	        var head = htmlElement.getChildElement("head");
-	        var scriptTags=head.getChildElements("script");
-	        var mobileTheme = dojo.toJson(this.dojoMobileDefault); //davinci.theme.none_theme;
-	        dojo.forEach(scriptTags, function (scriptTag){
-	            var text=scriptTag.getElementText();
-	            var stop = 0;
-	            var start;
-	            if (text.length) {
-	                if (text.indexOf("dojo.require('dojox.mobile.deviceTheme');")/* && mobileTheme === davinci.theme.none_theme*/) {
-	                    mobileTheme = dojo.toJson(this.dojoMobileDefault); //davinci.theme.default_theme;
-	                }
-	                // Look for a dojox.mobile.themeMap in the document, if found set the themeMap
-	                while ((start = text.indexOf('dojoxMobile.themeMap', stop)) > -1 ){ // might be more than one.
-	                    var stop = text.indexOf(';', start);
-	                    if (stop > start){
-	                        mobileTheme = text.substring(start + 'dojoxMobile.themeMap'.length + 1, stop);
-	                        mobileTheme = dojo.toJson(Theme.getDojoxMobileThemesFromThemeMap (context, mobileTheme));
-	                    }
-	                }
-	           }
-	        });
-	    
+	        var djConfig = context._getDojoJsElem().getAttribute('data-dojo-config');
+	        if (djConfig) {
+		        djConfig = require.eval("({ " + djConfig + " })", "data-dojo-config");
+		        if (djConfig.themeMap) {
+			        mobileTheme = Theme.getDojoxMobileThemesFromThemeMap(context, djConfig.themeMap);
+			    }
+	        }
+
 	        var desktopTheme = context.getTheme();
-	        for (var s = 0; s < dojoThemeSets.themeSets.length; s++){
-	            var themeSet = dojoThemeSets.themeSets[s];
-	            if(themeSet.desktopTheme === desktopTheme.name){
-	                if (this.themeSetEquals(dojo.fromJson(mobileTheme),themeSet.mobileTheme)){
+	        for (var s = 0, len = dojoThemeSets.themeSets.length; s < len; s++) {
+	            themeSet = dojoThemeSets.themeSets[s];
+	            if (themeSet.desktopTheme === desktopTheme.name) {
+	                if (this.themeSetEquals(mobileTheme, themeSet.mobileTheme)) {
 	                    // found themeMap
 	                    return themeSet;
 	                }
 	            }
 	        }
-	    
-	    }  // no theme map or context
-	    var newThemeSetName = this.none_themeset_name;
-	    if (!mobileTheme || mobileTheme === this.none_theme){
-	        mobileTheme = dojo.toJson(this.dojoMobileDefault); 
-	    } else  if (mobileTheme === this.default_theme){
-	        mobileTheme =  dojo.toJson(this.dojoMobileDefault);
 	    }
+
 	    themeSet =  {
-	            "name": newThemeSetName,
-	            "desktopTheme": context ? desktopTheme.name : 'claro',
-	            "mobileTheme": context ? dojo.fromJson(mobileTheme) : dojo.clone(this.dojoMobileDefault)
-	        };  
+            name: this.none_themeset_name,
+            desktopTheme: context ? desktopTheme.name : 'claro',
+            mobileTheme: mobileTheme
+        };
 	    dojoThemeSets.themeSets.push(themeSet);
 	    return themeSet;
-	    
 	},
 	
-	getTheme:  function(name){
+	/*
+	 * @return the project for the target theme.
+	 */
+	getBase : function(){
+		if(Workbench.singleProjectMode()){
+			return Workbench.getProject();
+		}
+	},
+	
+	getThemeLocation : function(){
+		
+		
+		var base = this.getBase();
+		var prefs = Preferences.getPreferences('davinci.ui.ProjectPrefs',base);
+		
+		var projectThemeBase = (new Path(base).append(prefs['themeFolder']));
+		
+		return  projectThemeBase;
+	},
+	
+	getTheme:  function(name, flushCache){
 	    var themeData = Library.getThemes(Workbench.getProject(), this.workspaceOnly);
 	    for (var i = 0; i < themeData.length; i++){
-	        if(themeData[i].name === name){
+	        if(themeData[i] && themeData[i].name === name){
 	            return themeData[i];
 	        }
 	    }
@@ -290,9 +238,9 @@ define([
 	getThemeByCssFile:  function(cssFile){
 
 		var themeData = Library.getThemes(Workbench.getProject(), this.workspaceOnly);
-    	var targetFile = cssFile.getResource().getPath(); // target
+    	var targetFile = systemResource.findResource(cssFile.url).getPath(); 
 	    for (var i = 0; i < themeData.length; i++){
-	    	var themeFile = themeData[i].file;
+	    	var themeFile = themeData[i].getFile();
 	    	var path = themeFile.getParentFolder().getPath();// theme path
 	    	for (var x = 0; x < themeData[i].files.length; x++){
 	    		var checkFile = path + "/" + themeData[i].files[x];
@@ -314,7 +262,15 @@ define([
 	        if(mobileTheme[i].theme != this.none_theme && mobileTheme[i].theme != this.default_theme){
 	            var theme = this.getTheme(mobileTheme[i].theme);
 	            if (theme){ // user may have deleted theme
-	                var ssPath = new Path(theme.file.parent.getPath()).append(theme.files[0]);
+	            	var ssPath;
+	            	if (theme.path && theme.path[0]) {
+	            		var n=theme.path[0].lastIndexOf("/");
+	            		ssPath = new Path(theme.path[0].substring(0, n+1) + theme.files[0]);
+	            		
+	            	} else {
+	            		ssPath = new Path(theme.getFile().parent.getPath()).append(theme.files[0]);
+	            	}
+	                
 	                var resourcePath = context.getFullResourcePath();
 	                var filename = ssPath.relativeTo(resourcePath, true).toString();
 	                if (mobileTheme[i].device === this.other_device){
@@ -329,15 +285,13 @@ define([
 	    return themeMap;
 	},
 
-	getDojoxMobileThemesFromThemeMap: function(context, themeMap){
-	    
-	    var themeData = Library.getThemes(Workbench.getProject(), this.workspaceOnly, true);
-	    var map = dojo.fromJson(themeMap);
+	getDojoxMobileThemesFromThemeMap: function(context, themeMap) {
+	    var themeData = Library.getThemes(Workbench.getProject(), this.workspaceOnly);
 	    var mobileTheme = [];
-	    map.forEach(function(item, idx, arr) {
+	    themeMap.forEach(function(item, idx, arr) {
 	        for (var i = 0; i < themeData.length; i++){
 	            var theme = themeData[i];
-	            var ssPath = new Path(theme.file.parent.getPath()).append(theme.files[0]);
+	            var ssPath = new Path(theme.getFile().parent.getPath()).append(theme.files[0]);
 	            var resourcePath = context.getFullResourcePath();
 	            var filename = ssPath.relativeTo(resourcePath, true).toString();
 	            if (filename == item[2][0]){
@@ -351,13 +305,10 @@ define([
 	                break;
 	            }
 	        }
-	        
 	    }, this);
 	    
 	   return mobileTheme;
 	},
-
-
 
 	themeSetEquals: function (o1, o2) {
 	    //compares to objects to see if they are the same
@@ -396,6 +347,12 @@ define([
 	        return o1 === o2;
 	    }
 	},
+	
+	themeMapsEqual: function(o1,o2){
+		var o1Str = JSON.stringify(o1);
+		var o2Str = JSON.stringify(o2);
+		return o1Str === o2Str;
+	},
 
 	singleMobileTheme: function (themeSet) {
 	    //returns true if all mobile device use the same theme
@@ -407,7 +364,49 @@ define([
 	    }
 	    return true;
 	   
-	}
+	},
+	
+	getThemeSets: function(base){
+
+		var defaultThemeSet = Runtime.getDefaultThemeSet();
+		var prefThemeSets = null;
+		if(defaultThemeSet){
+			var save = false;
+			prefThemeSets = Preferences.getPreferences("maqetta.dojo.themesets", base);
+	        if (!prefThemeSets){ // The user has no theme Sets yet, so create the site default
+	        	prefThemeSets =  Theme.dojoThemeSets;
+	        	prefThemeSets.themeSets[0] = defaultThemeSet; // replace the default with siteDefault
+	        	save = true;
+	        } else { // is present check up to date 
+	        	var found = false;
+		        for (var s = 0; s < prefThemeSets.themeSets.length; s++){
+		            if (prefThemeSets.themeSets[s].name === defaultThemeSet.name) {
+		            	found = true;
+		            	if (!Theme.themeSetEquals(prefThemeSets.themeSets[s], defaultThemeSet)) {
+		            		// replace to make sure it is fresh
+		            		prefThemeSets.themeSets[s] = defaultThemeSet;
+		            		save = true;
+		            	}
+		            	break;	
+		            }
+		        }
+		        if (!found) {
+		        	prefThemeSets.themeSets.push(defaultThemeSet);
+		        	save = true;
+		        }
+		    }
+	        if (save) {
+	        	Theme.saveThemeSets( base, prefThemeSets);
+	        }
+		
+		} 
+		return prefThemeSets;
+	},
+	
+	saveThemeSets: function(base, prefThemeSets){
+		Preferences.savePreferences("maqetta.dojo.themesets", base, prefThemeSets);
+	},
+	
 };
 
 	
@@ -431,7 +430,7 @@ Theme.custom_themeset = {
 Theme.dojoThemeSets =  { 
         "version": "1.7",
         "specVersion": "0.8",
-        "helper": "maq-metadata-dojo-1.7/dojox/mobile/ThemeHelper",
+        "helper": "maq-metadata-dojo/dojox/mobile/ThemeHelper",
         "themeSets": [ 
                Theme.custom_themeset           
         ]

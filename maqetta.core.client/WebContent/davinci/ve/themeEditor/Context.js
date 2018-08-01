@@ -1,22 +1,19 @@
 define([
     	"dojo/_base/declare",
-    	"davinci/commands/CommandStack",
-    	"davinci/ve/widget",
-    	"davinci/ve/themeEditor/SelectTool",
-    	"davinci/ve/Context",
-    	"davinci/util",
-    	"davinci/library",
-    	"davinci/ve/metadata",
-    	"davinci/Theme"
-], function(declare, CommandStack, Widget, SelectTool, Context, Util, Library, Metadata, Theme){
+    	"dojo/Deferred",
+    	"../../commands/CommandStack",
+    	"../widget",
+    	"./SelectTool",
+    	"../Context",
+    	"../../library",
+    	"../metadata"
+], function(declare, Deferred, CommandStack, Widget, SelectTool, Context, Library, Metadata){
 
 
-return declare("davinci.ve.themeEditor.Context", [Context], {
+return declare("davinci.ve.ThemeEditor.Context", [Context], {
 	
 	// comma-separated list of modules to load in the iframe
 	_bootstrapModules: "dijit/dijit,dijit/dijit-all", // dijit-all hangs FF4 and does not seem to be needed.
-	//_bootstrapModules: "dijit/dijit",
-	_configProps: {async:true},
 
 	constructor: function(args){
 		this._id = "_edit_context_" + this._contextCount++;
@@ -72,18 +69,14 @@ return declare("davinci.ve.themeEditor.Context", [Context], {
 			bodyClasses: data.bodyClasses,
 			style: data.style
 		});
-		content = (data.content || "");
-		this._themeName = data.theme; 
+		content = data.content || "";
 		var containerNode = this.getContainerNode();
 		var active = this.isActive();
 		if(active){
 			this.select(null);
 			dojo.forEach(this.getTopWidgets(), this.detach, this);
 		}
-		var escapees = [],
-			scripts = {},
-			dvAttributes = {},
-			promise = new dojo.Deferred();
+		var promise = new Deferred();
 		dojo.forEach(this.getTopWidgets(), function(w){
 			if(w.getContext()){
 				w.destroyWidget();
@@ -91,12 +84,15 @@ return declare("davinci.ve.themeEditor.Context", [Context], {
 		});
 		containerNode.innerHTML = content;
 		dojo.forEach(dojo.query("*", containerNode), function(n){
-			this.loadRequires(n.getAttribute("dojoType"));
+			var type =  n.getAttribute("data-dojo-type") || n.getAttribute("dojoType") || /*n.getAttribute("oawidget") ||*/ n.getAttribute("dvwidget");
+			type = type && type.replace(/\./g, "/");
+			this.loadRequires(type, false/*doUpdateModel*/, true/*doUpdateModelDojoRequires*/); //TODO: use Deferred?
+			//this.loadRequires(n.getAttribute("dojoType"));
 		}, this);
 		this.getGlobal()["require"]("dojo/ready")(function(){
 			try {
 				this.getGlobal()["require"]("dojo/parser").parse(containerNode);
-				promise.callback();
+				promise.resolve();
 			} catch(e) {
 				// When loading large files on FF 3.6 if the editor is not the active editor (this can happen at start up
 				// the dojo parser will throw an exception trying to compute style on hidden containers
@@ -110,7 +106,7 @@ return declare("davinci.ve.themeEditor.Context", [Context], {
 				});
 				this._editorSelectConnection = dojo.subscribe("/davinci/ui/editorSelected",  dojo.hitch(this, this._editorSelectionChange));
 
-				promise.errback();
+				promise.reject();
 				throw e;
 			}
 		}.bind(this));
@@ -126,7 +122,7 @@ return declare("davinci.ve.themeEditor.Context", [Context], {
 	
 	attach: function(widget){
 		this.inherited(arguments);
-		if(!widget || widget.internal){
+		if(!widget || widget.internal || !widget._srcElement){
 			return;
 		}
 		var isThemeWidget = false;
@@ -136,10 +132,12 @@ return declare("davinci.ve.themeEditor.Context", [Context], {
 		}
 
 		widget.dvAttributes = {
-				isThemeWidget: isThemeWidget
+			isThemeWidget: isThemeWidget
 		};
 		if (isThemeWidget) {
-			Util.arrayAddOnce(this._widgets, widget);
+            if (this._widgets.indexOf(widget) === -1) {
+            	this._widgets.push(widget);
+            }
 		}
 	},
 	
@@ -177,20 +175,7 @@ return declare("davinci.ve.themeEditor.Context", [Context], {
 			this._selection = selection;
 			selectionChanged = true;
 		}
-		
-		var box = undefined;
-		var op = undefined;
-		if (!Metadata.queryDescriptor(widget.type, "isInvisible")) {
-			var node = widget.getStyleNode();
-			box = this.getDojo().position(node, true);
-			box.l = box.x;
-			box.t = box.y;
-			op = {move: false};
-			op.resizeWidth = false;
-			op.resizeHeight = false;
-		}
-		this.focus({box: box, op: op}, index);
-		this._focuses[0].showContext(this, widget);
+		this.updateFocus(widget, index);
 
 		if(selectionChanged){
 			this.onSelectionChange(this.getSelection());
@@ -198,6 +183,13 @@ return declare("davinci.ve.themeEditor.Context", [Context], {
 	},
 	
 	onSelectionChange: function(selection){
+		if (!this._forceSelectionChange) {
+			/*
+			 * This can be called from onContentChange in ve/context
+			 * So in that case we don't want to deslect the subwidget
+			 */
+			this.visualEditor._themeEditor._selectedSubWidget = null;
+		}
 		this.inherited(arguments);
 	},
 	
@@ -209,45 +201,69 @@ return declare("davinci.ve.themeEditor.Context", [Context], {
 	_restoreStates: function(){
 	    
 	},
-	 _configDojoxMobile: function() {
-	     // override base
-	     // FIXME Add helper here
-	
-	     var helper,
-	         ve = this.visualEditor;
-         if (ve.theme && ve.theme.helper){
-             helper = Theme.getHelper(ve.theme);
-             if (helper && helper.preThemeConfig){
-                 helper.preThemeConfig(this);
-             } 
-         }
-	    
-	 },
+
+	_configDojoxMobile: function() {
+	     // override base for themeEditor, set the themeMap for deviceTheme so it loads no theme files
+		// theme editor loads the themes staticly based on the .theme file not the device
+		
+		try {
+			var innerRequire = this.getGlobal()['require'],
+				dm = innerRequire('dojox/mobile'),
+				deviceTheme = innerRequire('dojox/mobile/deviceTheme'),
+				djConfig = this.getGlobal().dojo.config,  // TODO: use require
+				ua = 'none',
+				themeMap,
+				themeFiles,
+				mblLoadCompatPattern;
+		
+
+
+			themeMap = [['.*','',[]]]; // no theme loading from deviceTheme
+			themeFiles = [];
+			var re = new RegExp(''); //*-compat files not used
+			mblLoadCompatPattern=re;
+			deviceTheme.themeMap = themeMap;		
+			djConfig.mblThemeFiles = themeFiles;
+			djConfig.mblLoadCompatPattern = mblLoadCompatPattern;
+			dm.loadCompatPattern = mblLoadCompatPattern;
+			deviceTheme.loadDeviceTheme(ua);
+		} catch(e) {
+			// dojox/mobile wasn't loaded
+		}
+
+
+	},
 	 
-	 /*
-     * @returns the path to the file being edited
-     */
-	 getPath: function(){
-        
-        /*
-         * FIXME:
-         * We dont set the path along with the content in the context class, so
-         * have to pull the resource path from the model.  
-         * 
-         * I would rather see the path passed in, rather than assume the model has the proper URL,
-         * but using the model for now.
-         * 
-         */
+	/*
+	* @returns the path to the file being edited
+	*/
+	getPath: function(){
+	    
+	    /*
+	     * FIXME:
+	     * We dont set the path along with the content in the context class, so
+	     * have to pull the resource path from the model.  
+	     * 
+	     * I would rather see the path passed in, rather than assume the model has the proper URL,
+	     * but using the model for now.
+	     * 
+	     */
 	    /*theme editor sets the file name to DEFAULT_PAGE
 	     * so use the path theme file to find the html
 	     *
-         */  
-        var path = this.theme.file.getPath();
-        path = path.substring(0, path.lastIndexOf('/'));
-        path = path + '/' + this.theme.themeEditorHtmls[0];
-        return path;
-	 }
-	 
+	     */  
+	    var path = this.theme.getFile().getPath();
+	    path = path.substring(0, path.lastIndexOf('/'));
+	    path = path + '/' + this.theme.themeEditorHtmls[0];
+	    return path;
+	},
+
+	getFullResourcePath: function() {
+		return this.visualEditor.basePath;
+	},
+	
+	widgetAddedOrDeleted : function(){}
+	
 });
 });
 

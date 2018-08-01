@@ -1,11 +1,12 @@
 package maqetta.core.server.user;
 
-import java.io.File;
+import java.io.IOException;
 import java.io.Serializable;
 
 import org.davinci.server.review.CommentsDocument;
 import org.davinci.server.review.user.IDesignerUser;
 import org.davinci.server.user.IDavinciProject;
+import org.maqetta.server.IStorage;
 
 
 public class DavinciProject implements Serializable, IDavinciProject {
@@ -39,10 +40,11 @@ public class DavinciProject implements Serializable, IDavinciProject {
 		this.projectName = projectName;
 	}
 
-	public String getCommentFilePath() {
-		IDesignerUser ru = new DesignerUser(ownerId);
-		return ru.getCommentingDirectory().getAbsolutePath() + File.separator + "snapshot"
-				+ File.separator + "comments.xml";
+	public IStorage getCommentsFileStorage() throws IOException {
+		IDesignerUser ru = ReviewManager.getReviewManager().getDesignerUser(ownerId);
+		IStorage commentingDir = ru.getCommentingDirectory();
+		IStorage commentsFileStorage = commentingDir.newInstance(commentingDir, "snapshot/comments.xml");
+		return commentsFileStorage;
 	}
 
 	public CommentsDocument getCommentsDocument() {

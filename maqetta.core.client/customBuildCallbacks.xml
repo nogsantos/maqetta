@@ -175,7 +175,7 @@
 	</target>
 	
 	
-	<target name="dojo.build" if="run.dojo.build" unless="dojo.build.exists">
+	<target name="dojo.build" if="${run.dojo.build}" unless="${dojo.build.exists}">
 		<echo message="Doing dojo build" />
 		<property name="logExtension" value=".log"/>
 		<property name="logFile" value="${build.result.folder}/@dot${logExtension}"/>
@@ -195,15 +195,16 @@
 				<arg value="${target.folder}/WebContent/dojo/dojo.js"/>
 				<arg value="baseUrl=${target.folder}/WebContent/dojo"/>
 				<arg value="load=build"/>
-				<arg value="profileFile=${target.folder}/davinci.profile.js"/>
+				<arg value="profile=${target.folder}/maqetta.profile.js"/>
 				<arg value="action=release"/>
 				<arg value="cssOptimize=comments.keepLines"/>
 				<arg value="layerOptimize=shrinksafe.keepLines"/>
 		</java>
 		
-		<!-- Copy over original app.css with comments.  There is no build option to preserve CSS comments AND inline. -->
+		<!-- Copy over original app.css and app.js with comments.  There is no build option to preserve CSS comments AND inline. -->
 		<!--
 		<copy toFile="${target.folder}/WebContent/release/dojo/project/base/app.css" file="${target.folder}/WebContent/project/base/app.css" overwrite="true" />
+		<copy toFile="${target.folder}/WebContent/release/dojo/project/base/app.js" file="${target.folder}/WebContent/project/base/app.js" overwrite="true" />
 		-->
 		<!-- Copy over original workspace/maqetta folder -->
 		<!--
@@ -219,8 +220,8 @@
 		-->
 		<echo message="caching dojo build.."/>
 		
-		<copy todir="${dojo.cache.directory}" failonerror="true" overwrite="true" description="move Dojo build">
-					<fileset dir="${target.folder}/WebContent/release/dojo">
+		<move todir="${dojo.cache.directory}" failonerror="true" overwrite="true" description="move Dojo build">
+					<fileset dir="${target.folder}/WebContent/release/dojo"><!-- TODO: why not delete the entire structure? -->
 						<include name="davinci/"/>
 						<include name="system/"/>
 						<include name="dojo/"/>
@@ -228,11 +229,12 @@
 						<include name="dojox/"/>
 						<include name="eclipse/"/>
 			            <include name="preview/"/>
+			            <include name="orion/"/>
 					</fileset>
-		</copy>
+		</move>
 	</target>
 	
-	<target name="copy.dojo" if="run.dojo.build">
+	<target name="copy.dojo" if="${run.dojo.build}">
 		<delete dir="${target.folder}/WebContent/util"/>
 		<delete dir="${target.folder}/WebContent/dojo"/>
 		<delete dir="${target.folder}/WebContent/dijit"/>
@@ -262,15 +264,16 @@
 	<!-- ===================================================================== -->
 	<target name="post.gather.bin.parts">
 		
-        <echo message="Inserting git describe information"/>
+		<echo message="Inserting git describe information"/>
         <antcall target="update.revisions"/>
         <antcall target="update.repositoryinfo.js"/>
 		
     	<condition property="dojo.build.exists">
-    		<available file="${dojo.cache.directory}" type="dir"/>
+    		<available file="${dojo.cache.directory}/dojo" type="dir"/>
     	</condition>
 		<echo message="Build dojo=${run.dojo.build}"/>
 		<antcall target="dojo.build"/>
+
 		<antcall target="copy.dojo"/>
 
 		

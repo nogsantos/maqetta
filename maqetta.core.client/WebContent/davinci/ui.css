@@ -1,3 +1,33 @@
+.userSettingsMenuIcon {
+	background-image: url(img/sprite.png);
+	background-position: -82px -692px;
+	background-repeat: no-repeat;
+	width: 27px;
+	height: 27px;
+}
+.userSettingsMenu .dijitArrowButtonInner {
+	display:none;
+}
+.appSettingsMenuIcon {
+	background-image: url(img/sprite.png);
+	background-position: -48px -692px;
+	background-repeat: no-repeat;
+	width: 27px;
+	height: 27px;
+}
+.appSettingsMenu .dijitArrowButtonInner {
+	display:none;
+}
+.helpMenuIcon {
+	background-image: url(img/sprite.png);
+	background-position: -48px -652px;
+	background-repeat: no-repeat;
+	width: 27px;
+	height: 27px;
+}
+.helpMenu .dijitArrowButtonInner {
+	display:none;
+}
 .userLibDialog .columna{
 	
 	text-align:center;
@@ -10,7 +40,7 @@
 .projectSelection{
 	display: inline-block;
 	float: left;
-	width:95%
+	width:100%
 	
 }
 
@@ -23,8 +53,8 @@
 
 .projectToolbarRenameIcon {
 	/* same as redo icon for now */
-	background-image: url(./img/sprite.png); /* FIXME: add logic for redo-disabled.gif? */
-	background-position: -82px -728px;
+	background-image: url(img/sprite.png); /* FIXME: add logic for redo-disabled.gif? */
+	background-position: 0px -2114px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
@@ -32,8 +62,8 @@
 
 
 .projectToolbarDeleteIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for remove-disabled.gif? */
-	background-position: 0 -648px;
+	background-image: url(img/sprite.png); /* FIXME: add logic for remove-disabled.gif? */
+	background-position: -2px -648px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
@@ -108,23 +138,76 @@
 .templateInput {
 	width:100%;
 }
-
-.downloadAllIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for new_document-disabled.gif? */
-	background-position: 0 -1060px;
+#maqBody .FilesToolbarNewFolder {
+}
+.newFolderIcon {
+	background-image: url(img/sprite.png);
+	background-position: 0 -272px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
 }
-.userLibIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for new_document-disabled.gif? */
-	background-position: -82px -132px;
+#maqBody .FilesToolbarDeleteFile {
+}
+.FilesToolbarDeleteFileIcon {
+	background-image: url(img/sprite.png);
+	background-position: -20px -2054px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
+}
+.FilesToolbarDeleteFileIcon.FilesToolbarDeleteFileIconDisabled {
+	background-position: -20px -2094px;
+}
+#maqBody .FilesToolbarRenameFile {
+}
+.FilesToolbarRenameFileIcon {
+	background-image: url(img/sprite.png);
+	background-position: 0 -2113px;
+	background-repeat: no-repeat;
+	width: 16px;
+	height: 16px;
+}
+.FilesToolbarRenameFileIcon.FilesToolbarRenameFileIconDisabled {
+	background-position: 0 -2133px;
+}
+.FilesToolbarUploadFiles {
+	float:right;
+}
+.uploadIcon {
+	background-image: url(img/sprite.png);
+	background-position: -27px -274px;
+	background-repeat: no-repeat;
+	width: 16px;
+	height: 16px;
+}
+.FilesToolbarUploadZip {
+	float:right;
+	margin-right:5px;
+}
+.uploadZipIcon {
+	background-image: url(img/sprite.png);
+	background-position: -51px -273px;
+	background-repeat: no-repeat;
+	width: 16px;
+	height: 16px;
+	margin-right:5px;
+}
+.FilesToolbarDownloadAll {
+	float:right;
+}
+.downloadAllIcon {
+	background-image: url(img/sprite.png); /* FIXME: add logic for new_document-disabled.gif? */
+	background-position: -81px -296px;
+	background-repeat: no-repeat;
+	width: 16px;
+	height: 16px;
+}
+.FilesToolbarDownloadSelected {
+	float:right;
 }
 .downloadSomeIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for new_document-disabled.gif? */
+	background-image: url(img/sprite.png); /* FIXME: add logic for new_document-disabled.gif? */
 	background-position: 0 -994px;
 	background-repeat: no-repeat;
 	width: 16px;
@@ -132,7 +215,7 @@
 }
 
 .saveIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for save_edit-disabled.gif? */
+	background-image: url(img/sprite.png); /* FIXME: add logic for save_edit-disabled.gif? */
 	background-position: -82px -993px;
 	background-repeat: no-repeat;
 	width: 16px;
@@ -140,67 +223,61 @@
 }
 
 .saveAsIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for saveas-disabled.gif? */
+	background-image: url(img/sprite.png); /* FIXME: add logic for saveas-disabled.gif? */
 	background-position: -82px -1059px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
 }
-.saveAsWidgetIcon {
-	background-image: url(./img/sprite.png)
+
+.saveAsDijitIcon {
+	background-image: url(img/sprite.png);
 	background-position: -82px -927px;
 	width: 16px;
 	height: 16px;
 }
 
 .selectThemeIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for undo-disabled.gif? */
+	background-image: url(img/sprite.png); /* FIXME: add logic for undo-disabled.gif? */
 	background-position: -82px -1257px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
 }
 
-.selectLayoutIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for undo-disabled.gif? */
-	background-position: 0 -1250px;
+.flowLayoutIcon {
+	background-image: url(img/sprite.png); /* FIXME: add logic for undo-disabled.gif? */
+	background-position: -51px -1777px;
+	background-repeat: no-repeat;
+	width: 16px;
+	height: 16px;
+}
+.absoluteLayoutIcon {
+	background-image: url(img/sprite.png); /* FIXME: add logic for undo-disabled.gif? */
+	background-position: -75px -1777px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
 }
 .stickynoteIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for undo-disabled.gif? */
-	background-position: 0 -66px;
-	width: 16px;
-	height: 16px;
+	background-image: url(img/sprite.png); /* FIXME: add logic for undo-disabled.gif? */
+	background-position: -46px -610px;
+	width: 27px;
+	height: 27px;
 }
 .rotateIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: -82px -860px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
 }
-.rotateIconCCW {
+.orientationLandscape .rotateIcon {
 	background-position: -82px -878px;
 }
 .deviceIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: 0 -780px;
-	background-repeat: no-repeat;
-	width: 16px;
-	height: 16px;
-}
-.undoIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for undo-disabled.gif? */
-	background-position: -82px -1389px;
-	background-repeat: no-repeat;
-	width: 16px;
-	height: 16px;
-}
-.redoIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for redo-disabled.gif? */
-	background-position: -82px -728px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
@@ -208,8 +285,8 @@
 
 .renameIcon {
 	/* same as redo icon for now */
-	background-image: url(./img/sprite.png); /* FIXME: add logic for redo-disabled.gif? */
-	background-position: -82px -728px;
+	background-image: url(img/sprite.png); /* FIXME: add logic for redo-disabled.gif? */
+	background-position: 0px -2113px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
@@ -217,110 +294,222 @@
 
 
 .deleteIcon {
-	background-image: url(./img/sprite.png); /* FIXME: add logic for remove-disabled.gif? */
-	background-position: 0 -648px;
+	background-image: url(img/sprite.png); /* FIXME: add logic for remove-disabled.gif? */
+	background-position: -2px -647px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
 }
 .printIcon {
-	background-image: url(./img/sprite.png); /* FIXME: Add logic for print-disabled.gif? */
+	background-image: url(img/sprite.png); /* FIXME: Add logic for print-disabled.gif? */
 	background-position: -82px -596px;
 	background-repeat: no-repeat;
 	width: 16px;
 	height: 16px;
 }
+#davinci_toolbar_container .openBrowser {
+	margin-right:18px;
+}
 .openBrowserIcon {
-	background-image: url(./img/sprite.png); /* FIXME: Disabled version? */
-	background-position: -82px -530px;
+	background-image: url(img/sprite.png); /* FIXME: Disabled version? */
+	background-position: -46px -532px;
 	background-repeat: no-repeat;
-	width: 16px;
-	height: 16px;
+	width: 27px;
+	height: 27px;
+}
+.documentSettingsIcon {
+	background-image: url(img/sprite.png); /* FIXME: Disabled version? */
+	background-position: -46px -572px;
+	background-repeat: no-repeat;
+	width: 27px;
+	height: 27px;
+}
+.documentSettings .dijitArrowButtonInner {
+	display:none;
 }
 
 .propertiesDropDownIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: 0 -846px;
 	width: 16px;
 	height: 16px;
 	background-color:#EAEAEA;
 }
 .copyIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: 0 -450px;
 	width: 18px;
 	height: 18px;
 }
 .gotolineIcon {
-	background-image: url(./img/sprite.pgn);
+	background-image: url(img/sprite.pgn);
 	background-position: 0 -1316px;
 	width: 18px;
 	height: 18px;
 }
 
 .closeIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: 0 -384px;
 	width: 18px;
 	height: 18px;
 }
 .formatIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: -82px -1455px;
 	width: 18px;
 	height: 18px;
 }
 .fullScreenIcon {
-	background-image: url(./img/sprint.png);
+	background-image: url(img/sprint.png);
 	background-position: 0 -1184px;
 	width: 18px;
 	height: 18px;
 }
 .htmlFileIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: -82px -1323px;
 	width: 16px;
 	height: 16px;
 }
+.htmlFileIconReadOnly{
+	background-image: url(img/sprite.png);
+	background-position: -99px -1323px;
+	width: 16px;
+	height: 16px;
+}
 .themeFileIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: 0 -1382px;
 	width: 16px;
 	height: 16px;
 }
+.themeFileIconReadOnly {
+	background-image: url(img/sprite.png);
+	background-position: -21px -1382px;
+	width: 16px;
+	height: 16px;
+}
 .cssFileIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: -82px -1257px;
 	width: 16px;
 	height: 16px;
 }
+.cssFileIconReadOnly {
+	background-image: url(img/sprite.png);
+	background-position: -82px -1279px;
+	width: 16px;
+	height: 16px;
+}
 img.readOnlyResource + img.treeReadOnlyLabelNode{
-	background-image: url(./img/readonly.png); /* FIXME: add logic for remove-disabled.gif? */
+	background-image: url(img/readonly.png); /* FIXME: add logic for remove-disabled.gif? */
 	
 	background-repeat: no-repeat;
 	width: 6px;
 	height: 6px;
 }
 
+
+
 /* Explorer */
-  	
-.readOnlyResource {
-	  	
- opacity:0.5;
-	  	
+.explorerHeaderProjectDiv {
+	padding-top:1px;
 }
+.ExplorerToolbar {
+	background-color:#efefef;
+	border-bottom: #989898 1px solid;
+}
+.ExplorerToolbar .dijitToolbar.davinciToolbar {
+	padding: 0px 2px 5px 4px;
+	background-image: none;
+	margin-top: -3px;
+}
+.explorerHeaderProjectDiv .projectSelection {
+	padding-left:1px;
+}
+.ExplorerToolbar .ExplorerDropDownButton {
+}
+.ExplorerToolbar .ExplorerNewProjectButton {
+	margin:0;
+}
+.ExplorerToolbar .ExplorerNewProjectIcon {
+	background-image: url(img/sprite.png);
+	background-position: -104px -297px;
+	width:16px;
+	height:16px;
+}
+#maqBody .ExplorerToolbar .ExplorerNewProjectButton .dijitButtonNode {
+	border:none;
+	background:none;
+	padding-right:2px;
+}
+.ExplorerToolbar .ExplorerDropDownIcon {
+	background-image: url(img/sprite.png);
+	background-position: 0 -295px;
+	width:22px;
+	height:16px;
+}
+#maqBody .explorerHeaderProjectCol0 {
+	padding:0px 3px 0px 2px;;
+}
+.explorerHeaderProjectCol1 {
+	width:100%;
+}
+.explorerHeaderProjectCol2 .dijitDropDownButton .dijitArrowButtonInner {
+	display:none;
+}
+#maqBody .explorerHeaderProjectCol2 {
+	padding-right: 3px;
+	padding-left: 10px;
+	white-space:nowrap;
+}
+.readOnlyResource .dijitTreeLabel {
+	font-style: italic;
+	color: #5b5b5b;
+}
+
+.maqettaReadonlyFolderOpened {
+	background-image:url(img/sprite.png);
+	background-position: -69px -1172px;
+}
+
+.maqettaReadonlyFolderClosed {
+	background-image:url(img/sprite.png);
+	background-position: -50px -1172px;
+}
+
+.maqettaReadonlyFile {
+	background-image:url(img/sprite.png);
+	background-position: -87px -1171px;
+}
+
+
 .jsFileIcon {
-	background-image: url(./img/sprite.png);
+	background-image: url(img/sprite.png);
 	background-position: 0 -1580px;
 	width: 16px;
 	height: 16px;
 }
-.imageFileIcon {
-	background-image: url(./img/sprite.png);
-	background-position: 0 -1448px;
+.jsFileIconReadOnly {
+	background-image: url(img/sprite.png);
+	background-position: 0 -1605px;
 	width: 16px;
 	height: 16px;
 }
+.imageFileIcon {
+	background-image: url(img/sprite.png);
+	background-position: -2px -1448px;
+	width: 16px;
+	height: 16px;
+}
+.imageFileIconReadOnly {
+	background-image: url(img/sprite.png);
+	background-position: -2px -1466px;
+	width: 16px;
+	height: 16px;
+}
+
 
 .fileFolderTable {
 	/* Believe it or not, margin-left/right set to auto causes a table to be centered */
@@ -385,10 +574,6 @@ img.readOnlyResource + img.treeReadOnlyLabelNode{
 	background-position:-20px -846px;
 }
 .fileDialog .folderContainer {
-	margin-left:1px;
-	margin-top:.3em;
-	margin-bottom:1em;
-	padding:1px;
 }
 .fileDialog .folderContainer .dijitContentPane {
 	border:1px solid #888;
@@ -487,25 +672,124 @@ img.readOnlyResource + img.treeReadOnlyLabelNode{
     margin-right: 20px;
 }
 
-.NewProjectDialogLabel {
+.NewProjectDialogTable {
+	width:100%;
+}
+.claro .NewProjectDialogTable .dijitSelectLabel {
 	white-space:nowrap;
+}
+.NewProjectTemplateSelect .dijitButtonContents {
+	min-width:8em;
+}
+.NewProjectDialogLabel {
+	margin-left:2px;
+}
+.NewProjectUseTemplateLabel {
+	margin-right:10px;
+}
+.NewProjectDialogLabel, .NewProjectTemplateDialogLabel {
+	white-space:nowrap;
+}
+.NewProjectUseTemplateCell, .NewProjectCloneExistingCell, .NewProjectEclipseSupportCell {
+	vertical-align:middle;
+	height:22px;
+}
+.NewProjectUseTemplateCell {
+	padding-top:20px;
 }
 
-.nhfo_ct {
+.NewProjectTemplateName {
+	white-space:nowrap;
+} 
+.NewProjectTemplateAuthor {
+	float:right;
+	font-style:italic;
 	white-space:nowrap;
 }
-.nhfo_ct label {
+.NewProjectTemplateShareCell {
+	padding-top:20px;
+}
+.ManageProjectTemplatesOuterDiv table {
+	border-spacing:0;
+	border-collapse:collapse;
+	border:1px solid lightgray;
+	font-size:13px;
+}
+.ManageProjectTemplatesOuterDiv table th {
+	white-space:nowrap;
+	padding:3px 5px;
+	text-align:center;
+	vertical-align:middle;
+	height:30px;
+	border-right:1px solid lightgray;
+}
+.ManageProjectTemplatesOuterDiv table td {
+	border:none;
+	padding:4px 6px;
+	border-right:1px solid lightgray;
+}
+.mpt_sharingSimple_cell, .mpt_delete_cell {
+	text-align:center;
+}
+.mpt_delete {
+	width:16px;
+	height:16px;
+	background-color:white;
+	background-image:url('img/sprite.png');
+	background-position: 0px -650px;
+	border:none;
+	cursor:pointer;
+}
+.ManageProjectTemplatesDuplicateNames {
+	visibility:hidden;
+	color:red;
+	font-size:13px;
+	font-style:italic;
+	padding:8px 0 2px;
+}
+.ManageProjectTemplatesDuplicateNames.ManageProjectTemplatesDuplicateNamesVisible {
+	visibility:visible;
+}
+.mpt_readonly {
+	color:gray;
+}
+.mpt_highlight {
+	background-color:#ffffcc;
+}
+.mpt_row_head {
+	background-color:#f3f3f3;
+	background-image:-webkit-linear-gradient(white 40%, #f3f3f3 40%, #f3f3f3 75%, #ededed 75%);
+	background-image:-moz-linear-gradient(white 40%, #f3f3f3 40%, #f3f3f3 75%, #ededed 75%);
+	background-image:-ms-linear-gradient(white 40%, #f3f3f3 40%, #f3f3f3 75%, #ededed 75%);
+	background-image:-o-linear-gradient(white 40%, #f3f3f3 40%, #f3f3f3 75%, #ededed 75%);
+	background-image:linear-gradient(white 40%, #f3f3f3 40%, #f3f3f3 75%, #ededed 75%);
+}
+.mpt_row_even {
+	background-color:white;
+}
+.mpt_row_odd {
+	background-color:#f3f3f3;
+}
+.mpt_row.mpt_delete_row,
+.mpt_row.mpt_delete_row .mpt_delete {
+	background-color:#ffdddd;
+	text-decoration:line-through;
+}
+.mpt_col_sharing_hide .mpt_col_sharing {
+	display:none;
+}
+.nhfo_dv {
+	white-space:nowrap;
+}
+.nhfo_dv label {
 	vertical-align:middle;
 }
-.nhfo_ct .dijitSelectLabel {
+.nhfo_dv .dijitSelectLabel {
 	padding-left:.05em;
 	padding-right:.25em;
 }
 .nhfo_outer2 {
-/*
-	margin: .8em 0 0;
-*/
-	margin: 8px 2px 0;
+	margin: 14px 2px 6px;
 	border: 1px solid #759DC0;
 	border-radius: 4px;
 }
@@ -519,7 +803,7 @@ img.readOnlyResource + img.treeReadOnlyLabelNode{
 	background: rgba(171,214,255,.1); /* #ABD6FF */
 	border-radius: 4px;
 }
-.nhfo_ct .dijitSelect .dijitButtonContents {
+.nhfo_dv .dijitSelect .dijitButtonContents {
 	width:11em;
 }
 .nhfo_show_details {
@@ -570,4 +854,79 @@ img.readOnlyResource + img.treeReadOnlyLabelNode{
 /*
 	margin-left: .5em;
 */
+}
+
+/* resizabled dialog*/
+.claro .resizableDialog .dijitDialogTitleBar {
+	padding-left: 10px;
+}
+.claro .resizableDialog .dijitDialogPaneContentArea {
+	padding: 14px 11px;
+}
+.resizableDialog .dijitDialogPaneContentArea {
+	overflow: auto;
+}
+
+.resizableDialog .dialogSecondaryButtons {
+	float: right;
+}
+
+.resizableDialog .dijitDialogPaneActionBar {
+	clear: both;
+	text-align: left;
+
+	/* for the resize handle */
+	padding-right: 14px;
+}
+/*override*/
+.resizableDialog .dijitDialogPaneActionBar.dialogButtonContainerOverride {
+	text-align: right;
+}
+.resizableDialog .dialogContent {
+	padding-left: 0;
+	padding-top: 0;
+}
+.claro .resizableDialog .dijitDialogPaneActionBar {
+	padding-left:10px;
+}
+.newOpenMenuItem {
+	background-image:url(img/sprite.png);
+	width:20px;
+	height:16px;
+}
+.newMobileAppMenuItem {
+	background-position:-39px -924px;
+}
+.newDesktopAppMenuItem {
+	background-position:-39px -1059px;
+}
+.newSketchHiFiMenuItem {
+	background-position:-39px -987px;
+}
+.newSketchLoFiMenuItem {
+	background-position:-39px -1010px;
+}
+.newCSSMenuItem {
+	background-position:-39px -884px;
+}
+.newJSMenuItem {
+	background-position:-39px -902px;
+}
+.newThemeMenuItem, .openThemeMenuItem {
+	background-position:-39px -1033px;
+}
+.newProjectMenuItem, .openProjectMenuItem {
+	background-position:-39px -943px;
+}
+.newReviewMenuItem, .openReviewMenuItem {
+	background-position:-39px -964px;
+}
+.newFolderMenuItem {
+	background-position:-39px -1085px;
+}
+.openFileMenuItem {
+	background-position:-39px -1109px;
+}
+.orionIcon {
+	background-position:-85px -24px;
 }

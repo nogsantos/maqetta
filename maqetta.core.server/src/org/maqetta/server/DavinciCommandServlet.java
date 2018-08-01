@@ -1,15 +1,17 @@
 package org.maqetta.server;
 
+import java.io.EOFException;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-import javax.servlet.ServletException;
-import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.maqetta.server.Command;
 import org.davinci.server.internal.Activator;
 import org.davinci.server.internal.command.CommandDescriptor;
 import org.davinci.server.user.IUser;
@@ -21,130 +23,187 @@ import org.eclipse.core.runtime.IExtensionRegistry;
 @SuppressWarnings("serial")
 public class DavinciCommandServlet extends HttpServlet {
 
-    private HashMap commands    = new HashMap();
+	static private Logger theLogger = Logger.getLogger(DavinciCommandServlet.class.getName());
+
+	private HashMap<String, CommandDescriptor> commands = new HashMap<String, CommandDescriptor>();
     private boolean initialized = false;
 
     public DavinciCommandServlet() {
     }
 
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+	private void log(HttpServletRequest req, String method, Throwable t, IUser user) {
+		theLogger.logp(Level.SEVERE, DavinciCommandServlet.class.getName(), method, "Unhandled Exception", t);
+		String log = "RequestURL: " + req.getRequestURL().toString();
 
-        if (!initialized) {
-            initialize();
-        }
-        String pathInfo = req.getPathInfo();
-        if (pathInfo.startsWith("/")) {
-            pathInfo = pathInfo.substring(1);
-        }
+		if (user == null) {
+			user = ServerManager.getServerManager().getUserManager().getUser(req);
+		}
+		if (user != null) {
+			log += "\nUser: uid=" + user.getUserID();
+			String email = user.getPerson().getEmail();
+			if (email != null) {
+				log += " email=" + email;
+			}
+		}
 
-        CommandDescriptor commandDescriptor = (CommandDescriptor) this.commands.get(pathInfo);
-        if (commandDescriptor == null || commandDescriptor.isPut()) {
-            throw new java.lang.AssertionError(new String("commandDescriptor is null or is Put in Get processing"));
-        }
-        IUser user = checkLogin(req, resp, commandDescriptor);
-        if (user == null && !commandDescriptor.isNoLogin()) {
-            return;
-        }
+		String query = req.getQueryString();
+		if (query != null) {
+			log += "\nQuery: " + query;
+		}
 
-        Command command = commandDescriptor.getCommand();
-        command.init();
+		Enumeration<String> names = req.getHeaderNames();
+		while (names.hasMoreElements()) {
+			String name = names.nextElement();
+			String header = req.getHeader(name);
+			if (header != null) {
+				log += "\n" + name + ": " + header;
+			}
+		}
+		theLogger.info(log);
+	}
 
-        command.handleCommand(req, resp, user);
-        if (command.getErrorString() != null) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, command.getErrorString());
-        } else if (command.getResponse() != null) {
-            ServletOutputStream stream = resp.getOutputStream();
-            stream.print(command.getResponse());
-
-        }
+	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+		IUser user = null;
+    	try {
+    		resp.setCharacterEncoding("utf-8");
+	        if (!initialized) {
+	            initialize();
+	        }
+	        String pathInfo = req.getPathInfo();
+	        if (pathInfo.startsWith("/")) {
+	            pathInfo = pathInfo.substring(1);
+	        }
+	
+	        CommandDescriptor commandDescriptor = this.commands.get(pathInfo);
+	        if (commandDescriptor.isPut()) {
+	            throw new AssertionError(new String("commandDescriptor is Put in doGet"));
+	        }
+	        user = checkLogin(req, resp, commandDescriptor);
+	        if (user == null && !commandDescriptor.isNoLogin()) {
+	            return;
+	        }
+	
+	        Command command = commandDescriptor.getCommand();
+	        command.init();
+	
+	        command.handleCommand(req, resp, user);
+	        if (command.getErrorString() != null) {
+	            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, command.getErrorString());
+	        } else if (command.getResponse() != null) {
+	            OutputStream stream = resp.getOutputStream();
+	            stream.write(command.getResponse().getBytes("utf-8"));
+	        }
+    	} catch (RuntimeException re) {
+    		log(req, "doGet", re, user);
+    		throw re;
+    	} catch (EOFException eof) {
+    		// user cancelled request
+    		throw eof;
+    	} catch (IOException ioe) {
+    		log(req, "doGet", ioe, user);
+    		throw ioe;
+    	} catch (Error e) {
+    		log(req, "doGet", e, user);
+    		throw e;
+    	}
     }
 
     private IUser checkLogin(HttpServletRequest req, HttpServletResponse resp, CommandDescriptor commandDescriptor) throws IOException {
 
-        IUser user = ServerManager.getServerManger().getUserManager().getUser(req);
+        IUser user = ServerManager.getServerManager().getUserManager().getUser(req);
         if (user == null) {
-            if (ServerManager.LOCAL_INSTALL) {
-                user = ServerManager.getServerManger().getUserManager().getSingleUser();
-                req.getSession().setAttribute(IDavinciServerConstants.SESSION_USER, user);
-            } else {
-                if (!commandDescriptor.isNoLogin()) {
+            if (!ServerManager.LOCAL_INSTALL &&!commandDescriptor.isNoLogin()) {
                     resp.sendError(HttpServletResponse.SC_UNAUTHORIZED);
                     return null;
-                }
             }
-
         }
         return user;
     }
 
     @Override
-    protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        if (!initialized) {
-            initialize();
-        }
-        String pathInfo = req.getPathInfo();
-        if (pathInfo.startsWith("/")) {
-            pathInfo = pathInfo.substring(1);
-        }
-
-        CommandDescriptor commandDescriptor = (CommandDescriptor) this.commands.get(pathInfo);
-        if (commandDescriptor == null || !commandDescriptor.isPut()) {
-            throw new java.lang.AssertionError(new String("commandDescriptor is null or is not Put in Put processing"));
-        }
-
-        IUser user = checkLogin(req, resp, commandDescriptor);
-        if (user == null && !commandDescriptor.isNoLogin()) {
-            return;
-        }
-        Command command = commandDescriptor.getCommand();
-        command.init();
-
-        command.handleCommand(req, resp, user);
-
+    protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    	IUser user = null;
+    	try {
+	        if (!initialized) {
+	            initialize();
+	        }
+	        String pathInfo = req.getPathInfo();
+	        if (pathInfo.startsWith("/")) {
+	            pathInfo = pathInfo.substring(1);
+	        }
+	
+	        CommandDescriptor commandDescriptor = this.commands.get(pathInfo);
+	        if (!commandDescriptor.isPut()) {
+	            throw new AssertionError(new String("commandDescriptor is not Put in doPut"));
+	        }
+	
+	        user = checkLogin(req, resp, commandDescriptor);
+	        if (user == null && !commandDescriptor.isNoLogin()) {
+	            return;
+	        }
+	        Command command = commandDescriptor.getCommand();
+	        command.init();
+	
+	        command.handleCommand(req, resp, user);
+    	} catch (RuntimeException re) {
+    		log(req, "doPut", re, user);
+    		throw re;
+    	} catch (IOException ioe) {
+    		log(req, "doPut", ioe, user);
+    		throw ioe;
+    	} catch (Error e) {
+    		log(req, "doPut", e, user);
+    		throw e;
+    	}
     }
 
-    @Override
-    protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        // TODO Auto-generated method stub
-        super.service(req, resp);
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    	IUser user = null;
+    	try {
+	        if (!initialized) {
+	            initialize();
+	        }
+	
+	        String pathInfo = req.getPathInfo();
+	        if (pathInfo.startsWith("/")) {
+	            pathInfo = pathInfo.substring(1);
+	        }
+	
+	      
+	        CommandDescriptor commandDescriptor = this.commands.get(pathInfo);
+	        if (commandDescriptor.isPut()) {
+	            throw new AssertionError(new String("commandDescriptor is Put in doPost"));
+	        }
+	        user = checkLogin(req, resp, commandDescriptor);
+	        if (user == null) {
+	            if (!commandDescriptor.isNoLogin()) {
+	                resp.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+	                return;
+	            }
+	        }
+	        Command command = commandDescriptor.getCommand();
+	        command.init();
+	
+	        command.handleCommand(req, resp, user);
+	        if (command.getErrorString() != null) {
+	            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, command.getErrorString());
+	        } else if (command.getResponse() != null) {
+	            OutputStream stream = resp.getOutputStream();
+	            stream.write(command.getResponse().getBytes("utf-8"));
+	        }
+    	} catch(RuntimeException re) {
+    		log(req, "doPost", re, user);
+    		throw re;
+    	} catch (IOException ioe) {
+    		log(req, "doPost", ioe, user);
+    		throw ioe;
+    	} catch (Error e) {
+    		log(req, "doPost", e, user);
+    		throw e;
+    	}
     }
 
-    protected void doPost(HttpServletRequest request, HttpServletResponse resp) throws ServletException, IOException {
-        if (!initialized) {
-            initialize();
-        }
-
-        String pathInfo = request.getPathInfo();
-        if (pathInfo.startsWith("/")) {
-            pathInfo = pathInfo.substring(1);
-        }
-
-        IUser user = (IUser) request.getSession().getAttribute(IDavinciServerConstants.SESSION_USER);
-        CommandDescriptor commandDescriptor = (CommandDescriptor) this.commands.get(pathInfo);
-        if (commandDescriptor == null || commandDescriptor.isPut()) {
-            throw new java.lang.AssertionError(new String("commandDescriptor is null or is Put in Post processing"));
-        }
-        if (user == null) {
-            if (!commandDescriptor.isNoLogin()) {
-                resp.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-                return;
-            }
-
-        }
-        Command command = commandDescriptor.getCommand();
-        command.init();
-
-        command.handleCommand(request, resp, user);
-        if (command.getErrorString() != null) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, command.getErrorString());
-        } else if (command.getResponse() != null) {
-            ServletOutputStream stream = resp.getOutputStream();
-            stream.print(command.getResponse());
-
-        }
-    }
-
-    void loadCommands() {
+    private void loadCommands() {
         IExtensionRegistry registry = Activator.getActivator().getRegistry();
         if (registry != null) {
             IExtensionPoint point = registry.getExtensionPoint(IDavinciServerConstants.BUNDLE_ID, IDavinciServerConstants.EXTENSION_POINT_COMMAND);

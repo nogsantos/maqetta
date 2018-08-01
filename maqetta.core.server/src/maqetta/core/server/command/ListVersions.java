@@ -37,6 +37,8 @@ public class ListVersions extends Command {
 			String reviewTime = reviewerVersion.getTimeVersion();
 			if (designerIDParm == null || designerIDParm.equals("") || designerIDParm.equals(reviewDesignerID)) {
 				IDesignerUser designerUser = commentingManager.getDesignerUser(reviewDesignerID);
+				/* designer user removed from the system (or never existed) */
+				if(designerUser==null) continue;
 				Version version = designerUser.getVersion(reviewTime);
 
 				if (version != null) {
@@ -44,6 +46,7 @@ public class ListVersions extends Command {
 						writer.startObject();
 						writer.addField("designerId", reviewDesignerID);
 						writer.addField("designerEmail", designerUser.getRawUser().getPerson().getEmail());
+						writer.addField("designerDisplayName", designerUser.getRawUser().getPerson().getDisplayName() );
 						writer.addField("versionTitle", version.getVersionTitle());
 						writer.addField("versionId", version.getVersionID());
 						writer.addField("dueDate", version.dueDateString());
@@ -65,7 +68,8 @@ public class ListVersions extends Command {
 		
 						for(Reviewer reviewer:version.getReviewers()){
 							writer.startObject();
-							writer.addField("name", reviewer.getUserName());
+							writer.addField("name", reviewer.getUserID());
+							writer.addField("displayName", reviewer.getDisplayName());
 							writer.addField("email", reviewer.getEmail());
 							writer.endObject();
 						}
@@ -79,5 +83,6 @@ public class ListVersions extends Command {
 			}
 		}
 		this.responseString = writer.getJSON();
+        resp.setContentType("application/json;charset=UTF-8");
 	}
 }

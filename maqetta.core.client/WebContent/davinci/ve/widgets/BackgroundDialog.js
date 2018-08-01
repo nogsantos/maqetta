@@ -1,6 +1,8 @@
 define(["dojo/_base/declare",
-        "dijit/_Templated",
-        "dijit/_Widget",
+        "dijit/_WidgetBase",
+		"dijit/_TemplatedMixin",
+		"dijit/_WidgetsInTemplateMixin",
+		"davinci/Runtime",
         "davinci/ve/widgets/MutableStore",
         "davinci/ve/widgets/ColorStore",
         "dojo/text!./templates/BackgroundDialog.html",
@@ -10,24 +12,44 @@ define(["dojo/_base/declare",
         "davinci/ve/utils/URLRewrite",
         "davinci/model/Path",
         "dijit/form/Button",
-        
         "davinci/ve/widgets/ColorPicker",
         "davinci/ve/widgets/ColorPickerFlat",
         "dijit/form/Textarea",
         "davinci/ui/widgets/FileFieldDialog",
-        
-       
-],function(declare, _Templated, _Widget, MutableStore, ColorStore, templateString, CSSUtils, veNLS,commonNLS, URLRewrite, Path){
+],function(declare, 
+		_WidgetBase, 
+		_TemplatedMixin, 
+		_WidgetsInTemplateMixin, 
+		Runtime,
+		MutableStore, 
+		ColorStore, 
+		templateString, 
+		CSSUtils, 
+		veNLS,
+		commonNLS, 
+		URLRewrite, 
+		Path){
 
-	return declare("davinci.ve.widgets.BackgroundDialog",   [_Widget, _Templated], {
+	var getCSSForWorkspaceURL = function (baseLocation, relativeURLInside) {
+		var workspaceUrl = Runtime.getUserWorkspaceUrl();
+		//Need to add project path (e.g., "project1") to the front of the image url
+		relativeURLInside = new Path(baseLocation).getParentPath().append(relativeURLInside).toString();
+		val = 'url(\'' + workspaceUrl + relativeURLInside + '\')';
+		return val;
+	};
+	
+	BackgroundDialog = declare("davinci.ve.widgets.BackgroundDialog", [_WidgetBase, _TemplatedMixin, _WidgetsInTemplateMixin], {
 		
 		templateString: templateString,
 		widgetsInTemplate: true,
-		_filePicker : null,
+		_filePicker: null,
+		context: null,
+
+		veNLS: veNLS,
 		
 		stopRowTemplate:"<tr class='bgdGradOptRow bgdStopRow' style='display:none;'>"+
 					"<td class='bgdCol1'></td>"+
-					"<td class='bgdOptsLabel bdgStopLabel'>Template:</td>"+
+					"<td class='bgdOptsLabel bdgStopLabel'>"+veNLS.bgdTemplate+"</td>"+
 					"<td class='bgdStopColorTD'>"+
 					"<select class='bgdColor' dojoType='dijit.form.ComboBox'>"+
 					"</select>"+
@@ -249,25 +271,17 @@ define(["dojo/_base/declare",
 			this.inherited(arguments);
 			/* back ground image box */
 			
-			this._filePicker.set('value', (this.bgddata && this.bgddata.url) ? this.bgddata.url : '');
+			var url = (this.bgddata && this.bgddata.url) ? this.bgddata.url : '';
+			this._filePicker.set('value', url);
+			this.bgddata.url = url;
 			this.connect(this._filePicker, 'onChange', dojo.hitch(this,function(){
-				var fpValue = this._filePicker.get('value');;
-				var oldUrl = new Path(fpValue);
-				var base = new Path(this._baseLocation).removeRelative();
-				oldUrl = oldUrl.removeRelative();
-				var newUrl = oldUrl.relativeTo(base.toString(), true).toString();
-				this.bgddata.url = newUrl;
+				var fpValue = this._filePicker.get('value');
+				this.bgddata.url = fpValue;
 				this._onFieldChanged();
 			}));
 			
 		},
-		/*
-		 * This is the base location for the file in question.  Used to caluclate relativity for url(...)
-		 */
-		_setBaseLocationAttr : function(baseLocation){
-			this._filePicker.set("baseLocation", baseLocation);
-		},
-	
+		
 		_updateBackgroundImageType : function(type){
 			var domNode = this.domNode;
 			if(!(type && (type=='none' || type=='url' || type=='linear' || type=='radial' || type=='other'))){
@@ -406,10 +420,15 @@ define(["dojo/_base/declare",
 			this._updateDialogValidity();
 			this._updateBackgroundPreview();
 		},
+		
+		/*
+		 * This is the base location for the file in question.  Used to caluclate relativity for url(...)
+		 */
 		_setBaseLocationAttr : function(baseLocation){
 			this._baseLocation = baseLocation;
-			
+			this._filePicker.set("baseLocation", baseLocation);
 		},
+		
 		_updateDialogValidity: function() {
 			var bgddata = this.bgddata;
 			if(!bgddata || !bgddata.type){
@@ -440,36 +459,31 @@ define(["dojo/_base/declare",
 		},
 	
 		_updateBackgroundPreview: function(){
-	//FIXME: Only supports gradients so far
-		
-			
 			var previewSpan = dojo.query('.bgdPreview', this.domNode)[0];
-			var a = CSSUtils.buildBackgroundImage(this.bgddata);
-			previewSpan.style.backgroundColor = '';
-			previewSpan.style.backgroundImage = '';
-			var styleText = previewSpan.style.cssText;
-			backgroundColor = this.bgddata.backgroundColor;
-			if(typeof backgroundColor == 'string' && backgroundColor.length>0){
-				styleText += ';background-color:' + backgroundColor;
-			}
-			
-			for (var i=0; i<a.length; i++){
-			
-				/* skip URLs for the preview. */
-				
-				if(URLRewrite.containsUrl(a[i]) && !URLRewrite.isAbsolute(a[i])){
-					continue;
-					/*
-					var oldUrl = new Path(URLRewrite.getUrl(a[i]));
-					
-					var newUrl = oldUrl.relativeTo(this._baseLocation).toString();
-					var newValue = URLRewrite.replaceUrl(a[i], newUrl);
-					a[i] = newValue
-					*/
-					
+			var styleText = '';
+			var bgddata = this.bgddata;
+			function addProp(propName, propNameCamelCase){
+				var propValue = bgddata[propNameCamelCase];
+				if(typeof propValue == 'string' && propValue.length>0){
+					styleText += ';' + propName + ':' + propValue;
 				}
-				
-				styleText += ';background-image:' + a[i];
+			}
+			addProp('background-color', 'backgroundColor');
+			addProp('background-repeat', 'backgroundRepeat');
+			addProp('background-position', 'backgroundPosition');
+			addProp('background-size', 'backgroundSize');
+			addProp('background-origin', 'backgroundOrigin');
+			addProp('background-clip', 'backgroundClip');
+			var a = CSSUtils.buildBackgroundImage(this.bgddata);
+			for (var i=0; i<a.length; i++){
+				var val = a[i];
+				if(URLRewrite.containsUrl(val) && !URLRewrite.isAbsolute(val) && this.context){
+					var urlInside = URLRewrite.getUrl(val);
+					if(urlInside){
+						val = getCSSForWorkspaceURL(this._baseLocation, urlInside);
+					}
+				}
+				styleText += ';background-image:' + val;
 			}
 			previewSpan.setAttribute('style', styleText);
 			
@@ -538,14 +552,16 @@ define(["dojo/_base/declare",
 		},
 	
 		okButton : function(){
-			this.cancel = false;
-			this.onClose();
 		},
 		
 		cancelButton : function(){
-			this.cancel = true;
 			this.onClose();
 		}
 	
 	});
+	
+	//Make helpers available as "static" functions
+	BackgroundDialog.getCSSForWorkspaceURL = getCSSForWorkspaceURL;
+	
+	return BackgroundDialog;
 });

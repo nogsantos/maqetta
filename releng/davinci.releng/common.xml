@@ -35,13 +35,30 @@
     	<populateDir project="maqetta.core.client"/>
         <populateDir project="davinci.product" extPath="/releng/" isFeature="true"/>
         <populateDir project="davinci.product" extPath="/releng/" />
-        <populateDir project="davinci.dojo_1_7"/>
+        <populateDir project="davinci.dojo_1_8"/>
+        <populateDir project="davinci.gridx"/>
     	<populateDir project="davinci.server.gzip"/>
         <populateDir project="davinci.html"/>
         <populateDir project="maqetta.clipart"/>
         <populateDir project="maqetta.shapes"/>
         <populateDir project="org.apache.commons.fileupload"/>
         <populateDir project="org.apache.commons.io"/>
+	    <populateDir project="maqetta.zazl" extPath="/zazl/"/>
+	    <populateDir project="maqetta.zazl.feature" extPath="/zazl/" isFeature="true"/>
+	    <populateDir project="org.cyberneko.html" extPath="/zazl/dependencies"/>
+	    <populateDir project="org.dojotoolkit.compressor" extPath="/zazl/optimizer"/>
+	    <populateDir project="org.dojotoolkit.compressor.shrinksafe" extPath="/zazl/optimizer"/>
+	    <populateDir project="org.dojotoolkit.json" extPath="/zazl/optimizer"/>
+	    <populateDir project="org.dojotoolkit.optimizer" extPath="/zazl/optimizer"/>
+	    <populateDir project="org.dojotoolkit.optimizer.amd" extPath="/zazl/optimizer"/>
+	    <populateDir project="org.dojotoolkit.optimizer.amd.rhinoast" extPath="/zazl/optimizer"/>
+        <populateDir project="org.dojotoolkit.optimizer.servlet" extPath="/zazl/optimizer"/>
+        <populateDir project="org.dojotoolkit.server.util" extPath="/zazl/optimizer"/>
+        <populateDir project="org.dojotoolkit.server.util.js" extPath="/zazl/optimizer"/>
+	    <populateDir project="org.json.js" extPath="/zazl/dependencies"/>
+	    <populateDir project="org.mozilla.javascript" extPath="/zazl/dependencies"/>
+	    <populateDir project="org.dojotoolkit.shrinksafe" extPath="/zazl/dependencies"/>
+	    <populateDir project="org.dojotoolkit.optimizer.amd.fragment" extPath="/zazl/"/>
     </target>
 
     <!--  equinox deps to copy in -->

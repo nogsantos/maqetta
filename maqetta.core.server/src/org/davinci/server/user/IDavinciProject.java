@@ -1,6 +1,9 @@
 package org.davinci.server.user;
 
+import java.io.IOException;
+
 import org.davinci.server.review.CommentsDocument;
+import org.maqetta.server.IStorage;
 
 public interface IDavinciProject {
 
@@ -12,7 +15,7 @@ public interface IDavinciProject {
 
     public abstract void setProjectName(String projectName);
 
-    public abstract String getCommentFilePath();
+    public abstract IStorage getCommentsFileStorage() throws IOException;
 
     public abstract CommentsDocument getCommentsDocument();
 

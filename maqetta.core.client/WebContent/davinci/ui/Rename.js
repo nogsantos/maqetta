@@ -12,7 +12,6 @@ define(["dojo/_base/declare",
 		templateString: templateString,
 		_okButton: null,
 		_newName : null,
-		_eclipseSupport: null,
 		
 		postMixInProperties : function() {
 			var langObj = uiNLS;
@@ -56,8 +55,6 @@ define(["dojo/_base/declare",
 		
 		okButton : function(){
 			this.value = dojo.attr(this._newName, "value");
-				
-			this.onClose();
 		},
 		
 		_getValueAttr : function(){

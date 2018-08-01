@@ -13,22 +13,43 @@
 	z-index: 1000000;
 }
 
-.editFocusFrame {
-	background-image: url('images/slant.gif'); 
+.flowDragOuter {
+	opacity:.5;
+	z-index:2000000;
+	position:absolute;
+	border:2px solid #6a94dc;
+	pointer-events:none;
 }
-.editFocusNob {
-	background-color: #FFFFFF;
-	border: 1px solid #AAA;
+.flowDragInner {
+	border:4px solid #d3e1ee;
+	pointer-events:none;
 }
 
+.areaSelectDiv {
+	position:absolute;
+	border:1px dashed black;
+	z-index:1000000;
+}
+
+.selectToolDragDiv {
+	position:absolute;
+	z-index:2000000;
+	background:transparent;
+}
+.selectToolDragMove {
+	cursor:move;
+}
+.selectToolDragCopy {
+	cursor:copy;
+}
 .editFeedback {
 	background-color: #AAA;
 }
 
 .editSubwidgetFocusFrame{
-	outline-style: dotted;
-	outline-color: red;
-	outline-width: 3px;
+	border-style: dotted;
+	border-color: red;
+	border-width: 3px;
 	z-index: 1000002;
 	
 }
@@ -75,8 +96,40 @@
 }
 
 /* HTML widgets */
+.stickyNote DIV.HtmlWidget,
+.stickyNote FORM.HtmlWidget, 
+.stickyNote SPAN.HtmlWidget, 
+.stickyNote A.HtmlWidget, 
+.stickyNote TABLE.HtmlWidget, 
+.stickyNote TD.HtmlWidget,
+.stickyNote TH.HtmlWidget, 
+.stickyNote AUDIO.HtmlWidget,
+.stickyNote EMBED.HtmlWidget, 
+.stickyNote VIDEO.HtmlWidget,
+.stickyNote IMG.HtmlWidget, 
+.richText DIV.HtmlWidget,
+.richText FORM.HtmlWidget, 
+.richText SPAN.HtmlWidget, 
+.richText A.HtmlWidget, 
+.richText TABLE.HtmlWidget, 
+.richText TD.HtmlWidget,
+.richText TH.HtmlWidget, 
+.richText AUDIO.HtmlWidget,
+.richText EMBED.HtmlWidget, 
+.richText VIDEO.HtmlWidget,
+.richText IMG.HtmlWidget
+{
+	outline:none;
+}
+
 
 DIV.HtmlWidget {
+	min-width:1em;
+	min-height:1em; 
+	outline: 1px dotted #AAA;
+	outline-color:rgba(128,128,128,0.5);
+}
+FORM.HtmlWidget {
 	min-width:1em;
 	min-height:1em; 
 	outline: 1px dotted #AAA;
@@ -103,21 +156,43 @@ TABLE.HtmlWidget {
 TD.HtmlWidget {
 	outline: 1px dotted #AAA;
 	outline-color:rgba(128,128,128,0.4);
-	width: 1em;
-	height: 1em;
 }
 TH.HtmlWidget {
 	outline: 1px dotted #AAA;
 	outline-color:rgba(128,128,128,0.4);
-	width: 1em;
-	height: 1em;
 }
-
+AUDIO.HtmlWidget {
+	min-width:1em;
+	min-height:1em; 
+	outline: 1px dotted #AAA;
+	outline-color:rgba(128,128,128,0.5);
+}
+EMBED.HtmlWidget {
+	min-width:1em;
+	min-height:1em; 
+	outline: 1px dotted #AAA;
+	outline-color:rgba(128,128,128,0.5);
+}
+VIDEO.HtmlWidget {
+	min-width:1em;
+	min-height:1em; 
+	outline: 1px dotted #AAA;
+	outline-color:rgba(128,128,128,0.5);
+}
+IMG.HtmlWidget {
+	min-width:1em;
+	min-height:1em; 
+	outline: 1px dotted #AAA;
+	outline-color:rgba(128,128,128,0.5);
+}
 
 /* dojox.mobile widgets */
 
 div.mblView,
-div[dojotype="dojox.mobile.ContentPane"] {
+div.mblContentPane,
+div.mblPane,
+div.mblContainer,
+div.mblScrollablePane {
     min-width:1em;
     min-height:1em; 
     outline: 1px dotted #AAA;
@@ -135,4 +210,8 @@ body {
 
 .dijitDialogUnderlayWrapper {
 	display: none !important;
+}
+/* Overcome Firefox outline issue (#2295) */
+.dijitButton .dijitOffScreen {
+	display:none;
 }

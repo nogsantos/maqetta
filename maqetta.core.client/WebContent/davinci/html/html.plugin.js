@@ -13,10 +13,8 @@ return {
 			isDefault: false,
 			//TODO implement		 icon: "",
 			editorClass: "davinci/html/ui/HTMLEditor",
-			palettesToTop: [
-			    "davinci.ve.style", //Properties
-                "davinci.ui.navigator", //Files
-            ]
+			palettePerspective: "davinci.html.htmlEditor",
+            expandPalettes: ["left"]
 		},
 		{
 			id: "CSSEditor",
@@ -25,10 +23,8 @@ return {
 			isDefault: true,
 			//TODO implement		 icon: "",
 			editorClass: "davinci/html/ui/CSSEditor",
-			palettesToTop: [
-				"davinci.ve.style", //Properties
-                "davinci.ui.navigator", //Files
-            ]
+			palettePerspective: "davinci.html.htmlEditor",
+            expandPalettes: ["left"]
 		},
 		{
 			id: "ImageViewer",
@@ -37,41 +33,54 @@ return {
 			isDefault: true,
 			//TODO implement		 icon: "",
 			editorClass: "davinci/html/ui/ImageViewer",
-			palettesToTop: [
-			    "davinci.ve.style", //Properties
-                "davinci.ui.navigator", //Files
-            ]
+			palettePerspective: "davinci.html.htmlEditor",
+            expandPalettes: ["left"]
 		}
 	],
 	"davinci.editorActions": {
 		editorContribution: {
 			targetID: "davinci.html.CSSEditor",
 			actions: [
-				{
-					id: "save",
-					iconClass: 'saveIcon',
-					run: function() {
-						require('../Workbench').getOpenEditor().save();
-					},
-					isEnabled: function(context) {
-						return true;
-
-					},
-					label: "Save",
-					toolbarPath: "save"
-				},
-				{
-					id: "saveas",
-					iconClass: 'saveAsIcon',
-					run: function() {
-						require("../ui/Resource").saveAs('css');
-					},
-					isEnabled: function(context) {
-						return require('../Workbench').getOpenEditor();
-					},
-					label: "Save As",
-					toolbarPath: "save"
-				}
+		      {
+                  id: "savecombo",
+                  className: "maqLabelButton",
+                  showLabel: true,
+                  label: "Save",
+                  toolbarPath: "save",
+                  type:'ComboButton',
+                  run: function() {
+                      require(['../Workbench'], function(workbench) {
+                      		require("../ui/Resource").save();
+                      });
+                  },
+                  isEnabled: function(context) {
+                      return require('../Workbench').getOpenEditor();
+                  },
+                  menu:[
+                     {
+                          iconClass: 'saveIcon',
+                          run: function() {
+                          		require("../ui/Resource").save();
+                          },
+                          isEnabled: function(context) {
+                              return require('../Workbench').getOpenEditor();
+                          },
+                          label: "Save",
+                  		keyBinding: {accel: true, charOrCode: "s", allowGlobal: true}
+                      },
+                      {
+                          iconClass: 'saveAsIcon',
+                          run: function() {
+                              require("../ui/Resource").saveAs('html');
+                          },
+                          isEnabled: function(context) {
+                              return require('../Workbench').getOpenEditor();
+                          },
+                          label: "Save As",
+                  		keyBinding: {accel: true, shift: true, charOrCode: "s", allowGlobal: true}
+                      }
+                  ]
+              }
 			]
 		}
 	},
@@ -79,8 +88,7 @@ return {
 		{
 			name: "HTML",
 			id: "general",
-			category: "",
-			pageContent: "HTML preferences content here"
+			category: ""
 		}
 	],
 	"davinci.fileType": [
@@ -114,7 +122,49 @@ return {
 			iconClass: "imageFileIcon",
 			type: "image"
 		}
-	]
+	],
+	
+	"davinci.perspective": [
+        {
+            id: "htmlEditor",
+            title: "HTML Editor",
+            views: [
+                {
+                    viewID: "davinci.ve.Palette",
+                    position: "left",
+                    hidden: true
+                },
+                {
+                    viewID: "davinci.ui.outline",
+                    position: "left",
+                    hidden: true
+                },
+                {
+                    viewID: "davinci.ve.style",
+                    position: "right"
+                },
+                {
+                    viewID: "davinci.ui.comment",
+                    position: "right",
+                    hidden: true
+                },
+                {
+                    viewID: "davinci.ve.states",
+                    position: "right-bottom",
+                    hidden: true
+                },
+                {
+                    viewID: "davinci.ui.navigator",
+                    position: "left-bottom",
+                    selected: true
+                },
+                {
+                    viewID: "davinci.review.reviewNavigator",
+                    position: "left"
+                }
+            ]
+        }
+    ]
 };
 
 });

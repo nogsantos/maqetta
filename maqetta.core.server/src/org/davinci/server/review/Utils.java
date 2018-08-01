@@ -7,13 +7,8 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
-import java.util.Date;
 import java.util.Map;
 import java.util.Properties;
-import java.util.TimeZone;
-
-import org.eclipse.core.runtime.IConfigurationElement;
-import org.maqetta.server.ServerManager;
 
 public class Utils {
 	private static Properties templateProperties;
@@ -25,29 +20,6 @@ public class Utils {
 		}catch(IOException e){
 			e.printStackTrace();
 		}
-	}
-
-	public static Date getCurrentDateInGmt0() {
-		Date date = new Date();
-		date.setTime(date.getTime() - TimeZone.getDefault().getOffset(date.getTime()));
-
-		return date;
-	}
-
-	public static String getCommonNotificationId() {
-		String notificationId = null;
-
-		notificationId = ServerManager.getServerManger().getDavinciProperty(Constants.EP_ATTR_MAIL_CONFIG_NOTIFICATIONID);
-		if(notificationId == null || "".equals(notificationId)){
-			IConfigurationElement mailConfig = ServerManager.getServerManger().getExtension(Constants.EXTENSION_POINT_MAIL_CONFIG, Constants.EP_TAG_MAIL_CONFIG);
-			if(mailConfig != null){
-				notificationId = mailConfig.getAttribute(Constants.EP_ATTR_MAIL_CONFIG_NOTIFICATIONID);
-			}
-		}
-		if(notificationId == null){
-			notificationId = "noreply@website.org";
-		}
-		return notificationId;
 	}
 
 	/**
@@ -107,7 +79,7 @@ public class Utils {
 	private static final String START_FLAG = "${";
 	private static final String END_FLAG = "}";
 
-	public static String substitude(String s, Map<String, String> map) {
+	public static String substitute(String s, Map<String, String> map) {
 		StringBuilder ret = new StringBuilder(s.length());
 		int pos = 0;
 		for(int start, end; (start = s.indexOf(START_FLAG, pos)) != -1 && (end = s.indexOf(END_FLAG, start)) != -1;){

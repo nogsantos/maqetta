@@ -1,28 +1,26 @@
 define([
 	"davinci/html/HTMLElement", //HTMLElement
-	"davinci/ve/metadata",
-	"dojo/_base/Deferred",
-	"davinci/ve/DijitWidget",
-	"davinci/ve/GenericWidget",
-	"davinci/ve/HTMLWidget",
-	"davinci/ve/ObjectWidget",
+	"../Runtime",
+	"./metadata",
+	"dojo/Deferred",
+	"./DijitWidget",
+	"./GenericWidget",
+	"./HTMLWidget",
+	"./ObjectWidget",
 	"dojo/window"
 ], function(
 	HTMLElement,
+	Runtime,
 	metadata,
-	Deferred
+	Deferred,
+	DijitWidget,
+	GenericWidget,
+	HTMLWidget,
+	ObjectWidget,
+	dojoWindow
 ) {
 
 var helperCache = {};
-
-var getUniqueId = function() {
-    var dj = dojo.window.get(dojo.doc).dojo,
-        id;
-    do {
-        id = "widget_" + Math.floor(0x7FF * Math.random());
-    } while(dj.byId(id));
-    return id;
-};
 
 //Add temporary IDs to nested children
 //Assumes iframe's DOM and the model are in sync regarding the order of child nodes
@@ -91,33 +89,17 @@ _dojo: function(node) {
 	var doc = node ? (node.ownerDocument || node) : dojo.doc;
 //TODO: for some reason node.ownerDocument is occasionally null
 	doc=doc||dojo.doc;
-	var win = dojo.window.get(doc);
+	var win = dojoWindow.get(doc);
 	return win.dojo || dojo;
 },
 
 _dijit: function(node) {
 	var doc = node ? (node.ownerDocument || node) : dojo.doc;
-	var win = dojo.window.get(doc);
+	var win = dojoWindow.get(doc);
 	return win.dijit || dijit;
 },
 
-allWidgets: function(containerNode) {
-	var result=[];
-	function find(element)
-	{
-		if (element._dvWidget) {
-			result.push(element._dvWidget);
-		}
-		dojo.forEach(element.childNodes, function(node) {
-			if (node.nodeType == 1) {
-				find(node);
-			}
-		});
-	}
-	find(containerNode);
-	return result;
-},
-
+//Turns text into an an array of style values
 parseStyleValues: function(text) {
 	var values = [];
 	if(text){
@@ -135,13 +117,49 @@ parseStyleValues: function(text) {
 	return values;
 },
 
-getStyleString: function(style) {
-	var styleStr = '';
-	for (var p in style){
-		if (style[p]){
-			styleStr = styleStr + p +':' + style[p] + ';';
-		}
+//Looks for a particular property within styleArray
+retrieveStyleProperty: function(styleArray, propName, defaultValue){
+	var propValue = defaultValue;
+	if(styleArray) {
+		dojo.some(styleArray, function(o){
+			if(o.hasOwnProperty(propName)){
+				propValue = o[propName];
+				return true;
+			}
+		});
 	}
+	return propValue;
+},
+
+//sets value of a particular property in styleArray (or adds if property not found)
+setStyleProperty: function(styleArray, propName, value){
+	var modifiedProperty = false;
+	if(styleArray) {
+		dojo.some(styleArray, function(o){
+			if(o.hasOwnProperty(propName)){
+				o[propName] = value;
+				modifiedProperty = true;
+				return true;
+			}
+		});
+	}
+	if (!modifiedProperty) {
+		var o = {};
+		o[propName] = value;
+		styleArray.push(o);
+	}
+},
+
+//turn styleArray back into string
+getStyleString: function(styleArray) {
+	var styleStr = "";
+	dojo.forEach(styleArray, function(style) {
+		for (var p in style){
+			if (style[p]){
+				styleStr = styleStr + p +':' + style[p] + ';';
+			}
+		}
+	});
 	return styleStr;
 },
 
@@ -181,51 +199,94 @@ getEnclosingWidgetForRichText: function(node) {
 	}
 },
 
+// used by helpers
 getUniqueObjectId: function(type, node) {
 	if(!type){
 		return undefined;
 	}
 
-	var base = type.substring(type.lastIndexOf(".") + 1);
+	var base = type.substring((type.lastIndexOf("/") || type.lastIndexOf(".")) + 1);
 	var i = 1;
 	var id = base + "_" + i++;
 	var dj = widgetObject._dojo(node);
-	while(dj.getObject(id)){
+	while(dj.getObject(id) || dj.byId(id)){
 		id = base + "_" + i++;
 	}
 	return id;
 },
 
-getLabel: function(widget) {
-	var text = "<span class='propertiesTitleWidgetName'>";
-	//FIXME: This is a hack so that meaningful names
-	//don't show a bunch of ugly prefix stuff.
-	//Need a better approach for this.
-	var remove_prefix=function(str){
-		var returnstr = str;
-		var prefixes_to_remove=[
-		                	    'dijit.form.',
-		                	    'dijit.layout.',
-		                	    'dijit.',
-		                	    'dojox.mobile.',
-		                	    'html.',
-		                	    'OpenAjax.'];
-		for(var i=0; i<prefixes_to_remove.length; i++){
-			if(str.indexOf(prefixes_to_remove[i])==0){ // use ===?
-				returnstr=str.substr(prefixes_to_remove[i].length);
-				//FIXME: Another hack. Need a better approach for this.
-				//Special case logic for HTML widgets
-				if(prefixes_to_remove[i]=='html.'){
-					returnstr='&lt;'+returnstr+'&gt;';
-				}
-				break;
+//FIXME: This is a hack so that meaningful names
+//don't show a bunch of ugly prefix stuff.
+//Need a better approach for this.
+_remove_prefix: function(str){
+	var returnstr = str;
+	var prefixes_to_remove=[
+	                	    'dijit/form/',
+	                	    'dijit/layout/',
+	                	    'dijit/',
+	                	    'dojox/mobile/',
+	                	    'html.',
+	                	    'html/',
+	                	    'OpenAjax.',
+	                	    'OpenAjax/'];
+	for(var i=0; i<prefixes_to_remove.length; i++){
+		if(str.indexOf(prefixes_to_remove[i])==0){ // use ===?
+			returnstr=str.substr(prefixes_to_remove[i].length);
+			//FIXME: Another hack. Need a better approach for this.
+			//Special case logic for HTML widgets
+			if(prefixes_to_remove[i]=='html.'){
+				returnstr='&lt;'+returnstr+'&gt;';
 			}
+			break;
 		}
-		return returnstr;
-	};
+	}
+	return returnstr;
+},
 
-	text+=remove_prefix(widget.type);
+_getWidgetNameText: function(type){
+	var text = "<span class='propertiesTitleWidgetName'>";
+	text+=this._remove_prefix(type);
 	text+="</span> ";
+	return text;
+},
+
+_getWidgetClassText: function(id, className){
+	var text = "<span class='propertiesTitleClassName'>";
+	//text += node.tagName;
+	if (id) {
+		text += "#" + id;
+	}
+	if (className) {
+		text += "." + className.replace(/\s+/g,".");
+	}
+	text += "</span> ";
+	return text;
+},
+
+/**
+ * Simpler version of getLabel, called as part of review/commenting,
+ * when there isn't a widget object available.
+ * @param node
+ * @returns string to display in Maqetta's UI
+ */
+getLabelForNode: function(node) {
+	var type = node.getAttribute('data-dojo-type') || node.getAttribute('dojoType');
+	if(!type){
+		type = node.tagName.toLowerCase();
+	}
+	type = type.replace(/\./g, "/");
+	var text = this._getWidgetNameText(type);
+	//FIXME: temporarily not showing classname because mobile views look better
+	// in review/commenting, but really instead of hard-coding this, we should
+	// default to showing classname and allow sceneManager to override the default
+	if(node.id /* || node.className*/){
+		text += this._getWidgetClassText(node.id /*, node.className*/);
+	}
+	return text;
+},
+
+getLabel: function(widget) {
+	var text = this._getWidgetNameText(widget.type);
 
 	var widgetText,
 		helper = widgetObject.getWidgetHelper(widget.type);
@@ -235,7 +296,7 @@ getLabel: function(widget) {
 
 	//TODO: move to getWidgetText helper methods
 	var domNode = widget.domNode;
-	switch(widget.type){
+	switch(widget.type.replace(/\//g, ".")){
 		case 'dijit.form.ComboBox':
 		case 'dijit.form.Button':
 			widgetText = widget.attr("label");
@@ -257,12 +318,17 @@ getLabel: function(widget) {
 		text += "<span class='propertiesTitleWidgetText'>" + widgetText + "</span> ";
 	}
 
+	if (helper && helper.getWidgetDescriptor) {
+		text += " <span class='propertiesTitleWidgetDescriptor'>" + helper.getWidgetDescriptor(widget) + "</span> ";
+	}
+
 	/* add the class */
 	var srcElement = widget._srcElement;
 	var id = widget.getId();
 	var classAttr = srcElement && srcElement.getAttribute("class");
 	var className = classAttr && classAttr.trim();
 	if (id || className) {
+/*
 		text += "<span class='propertiesTitleClassName'>";
 		//text += node.tagName;
 		if (id) {
@@ -272,6 +338,8 @@ getLabel: function(widget) {
 			text += "." + className.replace(/\s+/g,".");
 		}
 		text += "</span> ";
+*/
+		text += this._getWidgetClassText(id, className);
 	}
 
 	if (helper && helper.getWidgetTextExtra) {
@@ -297,8 +365,8 @@ byId: function(id, doc) {
 			return widget;
 		}
 	}
-	if(davinci.Runtime.currentEditor && davinci.Runtime.currentEditor.currentEditor && davinci.Runtime.currentEditor.currentEditor.context){
-		var context = davinci.Runtime.currentEditor.currentEditor.context;
+	if(Runtime.currentEditor && Runtime.currentEditor.currentEditor && Runtime.currentEditor.currentEditor.context){
+		var context = Runtime.currentEditor.currentEditor.context;
 		return context.widgetHash[id];
 	}
 	return undefined;
@@ -320,12 +388,8 @@ byNode: function(node) {
 /**
  * Main routine for creating a new widget on the current page canvas
  * @param {object} data  (Needs to be documented!)
- * @param {object} initialCreationArgs  Initial creation info
- *      parent - target parent widget
- *      size - explicit size {w:, h:}
- *      position - explicit position {x:, y:} 
  */
-createWidget: function(widgetData, initialCreationArgs) {
+createWidget: function(widgetData) {
 	if(!widgetData || !widgetData.type){
 		return undefined;
 	}
@@ -355,10 +419,10 @@ createWidget: function(widgetData, initialCreationArgs) {
 		}
 	}
 	var widgetClassId = metadata.queryDescriptor(type, "widgetClass");
-	var widgetClassName;
+	var widgetClass;
 	if(widgetClassId == "object"){
 		dojoType = type;
-		widgetClassName="davinci.ve.ObjectWidget";
+		widgetClass = ObjectWidget;
 		// Temporary Hack: Required when object specifies a jsId, otherwise object is not created
 		// see davinci.ve.ObjectWidget::postCreate::if(id)::var type = this.getObjectType(); (type = undefined without the following lines to add dojoType to the element attributes)
 		// Drag tree onto canvas to test.
@@ -366,25 +430,24 @@ createWidget: function(widgetData, initialCreationArgs) {
 		md.attributes = md.attributes || {};
 		md.attributes.dojoType = dojoType;
 	}else if(widgetClassId == "html"){
-		widgetClassName="davinci.ve.HTMLWidget";
+		widgetClass = HTMLWidget;
 //	}else if(widgetClassId == "OpenAjax"){
 //		widgetClassName="davinci.ve.OpenAjaxWidget";
 	}else if(widgetClassId == "dijit"){
-		widgetClassName="davinci.ve.DijitWidget";
+		widgetClass = DijitWidget;
 	} else { // if(widgetClassId == "generic"){
-		widgetClassName="davinci.ve.GenericWidget";
+		widgetClass = GenericWidget;
 	}
-	if(!widgetClassName){
+	if(!widgetClass){
 		//debugger;
 		return undefined;
 	}
-	c = dojo.getObject(widgetClassName);
+	c = widgetClass;
 
 	// XXX eventually replace with dojo.place()?
 	// XXX Technically, there can be more than one 'content'
-    var uniqueId = getUniqueId();
-    var content = md.content.trim().replace(/\s+/g, ' ').replace(/__WID__/g, uniqueId);
-	var node = dojo.window.get(dojo.doc).dojo._toDom(content);
+    var content = md.content.trim().replace(/\s+/g, ' ');
+	var node = dojoWindow.get(dojo.doc).dojo._toDom(content);
 	// XXX Used to create node like this, which added attributes from metadata, is there still a way to do this?
 	//	var node = dojo.create(md.tagName || "div", md.attributes);
 
@@ -421,54 +484,11 @@ createWidget: function(widgetData, initialCreationArgs) {
         srcElement.addText(node.innerHTML);
     }
 
-    if (md.javascript) {
-        var js = {};
-        js.location = md.javascript.location || "afterContent";
-        if (md.javascript.src) {
-            js.src = md.javascript.src;
-        } else {
-            js.$text = (md.javascript.$text || md.javascript).replace(/__WID__/g, uniqueId);
-        }
+    var requiresId = metadata.queryDescriptor(type, "requiresId"),
+    	name = metadata.queryDescriptor(type, "name"),
+    	idRoot = requiresId && name.match(/^[A-Za-z]\w*$/) ? name : undefined;
 
-        if (js.location == "atEnd") {
-            console.error("ERROR: <javascript> metadata element -- 'location' of 'atEnd' not supported");
-            js.location = "afterContent";
-        }
-
-        var script = dojo.doc.createElement("script");
-        var scriptModel = new HTMLElement("script");
-        if (js.src) {
-            script.setAttribute("src", js.src);
-            scriptModel.addAttribute("src", js.src);
-        } else {
-            script.text = js.$text;
-            scriptModel.script = "";
-            scriptModel.setScript(js.$text);
-        }
-
-        var wrapper = dojo.doc.createElement("div");
-        var wrapperModel = new HTMLElement("div");
-        if (js.location == "beforeContent") {
-            wrapper.appendChild(script);
-            wrapperModel.addChild(scriptModel);
-        }
-        wrapper.appendChild(node);
-        wrapperModel.addChild(srcElement);
-        if (js.location == "afterContent") {
-            wrapper.appendChild(script);
-            wrapperModel.addChild(scriptModel);
-        }
-        node = wrapper;
-        srcElement = wrapperModel;
-    }
-
-    var requiresId = metadata.queryDescriptor(type,"requiresId");
-    var name = metadata.queryDescriptor(type,"name");
-    var idRoot = node.tagName.toLowerCase();
-    if(name.match(/^[A-Za-z]\w*$/) != null){
-    	idRoot = name;
-    }
-    node.id = (data.properties && data.properties.id) || data.context.getUniqueID(srcElement, requiresId, idRoot);
+    node.id = (data.properties && data.properties.id) || data.context.getUniqueID(srcElement, idRoot);
 
 	var children = data.children;
 	if(children){
@@ -523,35 +543,24 @@ createWidget: function(widgetData, initialCreationArgs) {
 	if(helper && helper.preProcessData){
         data =  helper.preProcessData(data);
 	}
-	
-	// Invoke widget initialSize helper if this is widget's initial creation time
-	// (i.e., initialCreationArgs is provided)
-	if(initialCreationArgs && helper && helper.initialSize){
-        size =  helper.initialSize(initialCreationArgs);
-        if(size){
-        	var styleString = data.properties.style;
-        	var tempElem = styleString ? dojo.create('span',{style:styleString}) : dojo.create('span');
-        	if(size.width){
-        		tempElem.style.width = size.width;
-        	}
-        	if(size.height){
-        		tempElem.style.height = size.height;
-        	}
-        	data.properties.style = tempElem.style.cssText;
-        }
-	}
 
-	// Strip out event attributes. We want them in the model
+	// Strip out event attributes and a[href] attributes. We want them in the model
 	// but not in the DOM within page canvas.
-	var props = {};
+	// FIXME: should make the check for a[href] into a helper so other
+	// widgets can register similar attributes
+	var canvasAndModelProps = {};
+	var modelOnlyProps = {};
 	for (var p in data.properties) {
 		var propval = data.properties[p];
-		if (propval != null /*"!=" checks for null/undefined*/ &&
-				p.substr(0,2).toLowerCase()!="on") {
-			props[p] = propval;
+		if (propval != null){ /*"!=" checks for null/undefined some properties may be false like Tree showRoot */  
+			if(p.substr(0,2).toLowerCase()!="on" && !(srcElement.tag.toLowerCase()=='a' && p.toLowerCase()=='href')) { 
+				canvasAndModelProps[p] = propval;
+			}else{
+				modelOnlyProps[p] = propval;
+			}
 		}
 	}
-	var widget = new c(props, node, type, md, srcElement);
+	var widget = new c(canvasAndModelProps, node, type, md, srcElement, type);
 	widget._srcElement=srcElement;
 
 	if(widget.chart && (data.properties && data.properties.theme)){
@@ -570,16 +579,39 @@ createWidget: function(widgetData, initialCreationArgs) {
 		widget._edit_context = data.context;
 	}
 
-	if(data.properties){
-		widget.setProperties(data.properties);
+	if(data.properties){	
+		widget.setProperties(canvasAndModelProps);
+		widget.setProperties(modelOnlyProps, true);
 	}
 
-	if(data.states){
-		widget.states = dojo.clone(data.states);
-		var states_json = davinci.states.serialize(widget);
-		if(states_json){
-			widget._srcElement.addAttribute(davinci.states.ATTRIBUTE, states_json);
+//FIXME: Does data.states ever have a value? 
+//Yes, gets called when changing 'selected' property on a View
+	if(data.maqAppStates || data.maqDeltas){
+		if(data.maqAppStates){
+			widget.domNode._maqAppStates = dojo.clone(data.maqAppStates);
 		}
+		if(data.maqDeltas){
+			widget.domNode._maqDeltas = dojo.clone(data.maqDeltas);
+		}
+		var obj = davinci.states.serialize(widget.domNode);
+		if(obj.maqAppStates){	// if node has a _maqAppStates property
+			widget._srcElement.addAttribute(davinci.states.APPSTATES_ATTRIBUTE, obj.maqAppStates);
+		}
+		if(obj.maqDeltas){	// if node has a _maqDeltas property
+			widget._srcElement.addAttribute(davinci.states.DELTAS_ATTRIBUTE, obj.maqDeltas);
+		}
+	}
+	
+	// In some cases we are handling certain attributes within data-dojo-props 
+	// or via child HTML elements, and we do not want to allow those attributes 
+	// to be written out into the final HTML. Here, we give the helper a chance to 
+	// remove those attributes.
+	var helper = widgetObject.getWidgetHelper(type);
+	if(helper && helper.cleanSrcElement){
+		helper.cleanSrcElement(widget._srcElement);
+	}
+	if(helper && helper.postCreateWidget){
+		helper.postCreateWidget(widget);
 	}
 
 	return widget;
@@ -624,24 +656,27 @@ getWidget: function(node){
 		var data = parseNodeData(node);
 //		var oaWidgetType=node.getAttribute("oawidget");
 		var dvWidgetType=node.getAttribute("dvwidget");
-		if(node.getAttribute("widgetid") || node.getAttribute("dojotype")){
+		if (node.hasAttribute("widgetid") || node.hasAttribute("data-dojo-type") ||
+				node.hasAttribute("dojotype"))
+		{
 			var d = widgetObject._dijit(node);
-			var w= d.byNode(node);
+			var w = d.byNode(node);
+			var widgetType = node.getAttribute("data-dojo-type") || node.getAttribute("dojotype");
 			if (w) {
-				widget=new davinci.ve.DijitWidget(data,node,w);
+				widget = new DijitWidget(data,node,w,null,null,widgetType);
 			} else {
-				widget=new davinci.ve.ObjectWidget(data,node);
+				widget = new ObjectWidget(data,node);
 			}
 //		}else if (oaWidgetType){
-//			widget=new davinci.ve.OpenAjaxWidget(data,node,oaWidgetType);
+//			widget = new OpenAjaxWidget(data,node,oaWidgetType);
 		}else if (dvWidgetType){
-			widget=new davinci.ve.GenericWidget(data,node,dvWidgetType);
+			widget = new GenericWidget(data,node,dvWidgetType);
 		}else{
 			if(node.nodeName == "svg"){
 				//FIXME: inline SVG support not yet available
 				return undefined;
 			}
-			widget=new davinci.ve.HTMLWidget(data,node);
+			widget = new HTMLWidget(data,node);
 		}
 	}
 

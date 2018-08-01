@@ -1,7 +1,7 @@
 package maqetta.core.server.user.manager;
 
-
-import java.util.HashMap;
+import java.io.IOException;
+import java.util.logging.Logger;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -15,11 +15,13 @@ import org.davinci.server.user.IUserManager;
 import org.davinci.server.user.UserException;
 import org.maqetta.server.IDavinciServerConstants;
 import org.maqetta.server.IStorage;
-import org.maqetta.server.IVResource;
 import org.maqetta.server.ServerManager;
 
 public class UserManagerImpl implements IUserManager {
 
+	static final private Logger theLogger = Logger.getLogger(UserManagerImpl.class.getName());
+
+	private static IUser localUser;
     protected static UserManagerImpl theUserManager;
   //  protected HashMap                users    = new HashMap();
     protected IStorage            baseDirectory;
@@ -30,26 +32,24 @@ public class UserManagerImpl implements IUserManager {
 
 
     public UserManagerImpl() {
-    	ServerManager serverManger = ServerManager.getServerManger();
-    	try{
-        	this.baseDirectory= ServerManager.getServerManger().getBaseDirectory();
-        	this.usersCount = this.baseDirectory.list().length;
-    	}catch(Exception ex){
-    		System.out.println("FATAL ERROR Starting maqetta: " + ex);
-    		
-    	}
-        if (ServerManager.DEBUG_IO_TO_CONSOLE) {
-            System.out.println("\nSetting [user space] to: " + baseDirectory.getAbsolutePath());
-        }
-        System.out.println("\nSetting [user space] to: " + baseDirectory.getAbsolutePath());
+    	ServerManager serverManger = ServerManager.getServerManager();
 
+    	initWorkspace();
+    	
         String maxUsersStr = serverManger.getDavinciProperty(IDavinciServerConstants.MAX_USERS);
         if (maxUsersStr != null && maxUsersStr.length() > 0) {
             this.maxUsers = Integer.valueOf(maxUsersStr).intValue();
         }
 
-        this.personManager = ServerManager.getServerManger().getPersonManager();
+        this.personManager = ServerManager.getServerManager().getPersonManager();
 
+    }
+
+    protected void initWorkspace(){
+    	this.baseDirectory= ServerManager.getServerManager().getBaseDirectory();
+    	this.usersCount = this.baseDirectory.list().length;
+
+    	theLogger.info("Setting [user space] to: " + baseDirectory.getAbsolutePath());
     }
 
     /*
@@ -63,7 +63,7 @@ public class UserManagerImpl implements IUserManager {
         /*
          * deny permision to direct access of a users workspace
          */
-        return (resource != "");
+        return resource != "";
     }
 
     /*
@@ -72,11 +72,11 @@ public class UserManagerImpl implements IUserManager {
      * @see org.davinci.server.user.impl.UserManager#getUser(java.lang.String)
      * 
      */
-    public IUser newUser(IPerson person, IStorage baseDirectory) {
+    public IUser newUser(IPerson person, IStorage baseDirectory) throws UserException, IOException {
     	 return new User(person, baseDirectory);
     }
     
-    public IUser getUser(String userName) {
+    public IUser getUser(String userName) throws UserException, IOException {
 
        // IUser user = (IUser) users.get(userName);
         if (ServerManager.LOCAL_INSTALL && IDavinciServerConstants.LOCAL_INSTALL_USER.equals(userName)) {
@@ -85,10 +85,8 @@ public class UserManagerImpl implements IUserManager {
         if (this.checkUserExists(userName)) {
             IPerson person = this.personManager.getPerson(userName);
             return newUser(person, this.baseDirectory.newInstance(this.baseDirectory, userName));
-            
         }
         return null;
-
     }
 
     /*
@@ -97,7 +95,7 @@ public class UserManagerImpl implements IUserManager {
      * @see org.davinci.server.user.impl.UserManager#addUser(java.lang.String,
      * java.lang.String, java.lang.String)
      */
-    public IUser addUser(String userName, String password, String email) throws UserException {
+    public IUser addUser(String userName, String password, String email) throws UserException, IOException {
 
         if (checkUserExists(userName)) {
             throw new UserException(UserException.ALREADY_EXISTS);
@@ -108,14 +106,17 @@ public class UserManagerImpl implements IUserManager {
         }
         IPerson person = this.personManager.addPerson(userName, password, email);
         if (person != null) {
-
             IUser user = newUser(person, this.baseDirectory.newInstance(this.baseDirectory, userName));
           //  users.put(userName, user);
             //File userDir = user.getUserDirectory();
             //userDir.mkdir();
             //File settingsDir = user.getSettingsDirectory();
            // settingsDir.mkdir();
-            IVResource project = user.createProject(IDavinciServerConstants.DEFAULT_PROJECT);
+            try {
+				user.createProject(IDavinciServerConstants.DEFAULT_PROJECT);
+			} catch (IOException e) {
+				throw new UserException(e);
+			}
             
             this.usersCount++;
             return user;
@@ -129,7 +130,7 @@ public class UserManagerImpl implements IUserManager {
      * @see
      * org.davinci.server.user.impl.UserManager#removeUser(java.lang.String)
      */
-    public void removeUser(String userName) throws UserException {
+    public void removeUser(String userName) throws UserException, IOException {
 
         if (!checkUserExists(userName)) {
             return;
@@ -150,13 +151,13 @@ public class UserManagerImpl implements IUserManager {
      * @see org.davinci.server.user.impl.UserManager#login(java.lang.String,
      * java.lang.String)
      */
-    public IUser login(String userName, String password) {
+    public IUser login(String userName, String password) throws UserException, IOException {
         if (!checkUserExists(userName)) {
             return null;
         }
         IPerson person = this.personManager.login(userName, password);
         if (person != null) {
-            return newUser(person, this.baseDirectory.newInstance(this.baseDirectory, userName));
+			return newUser(person, this.baseDirectory.newInstance(this.baseDirectory, userName));
         }
         return null;
     }
@@ -172,7 +173,7 @@ public class UserManagerImpl implements IUserManager {
      * @see
      * org.davinci.server.user.impl.UserManager#isValidUser(java.lang.String)
      */
-    public boolean isValidUser(String userName) {
+    public boolean isValidUser(String userName) throws UserException, IOException {
         if (ServerManager.LOCAL_INSTALL && IDavinciServerConstants.LOCAL_INSTALL_USER.equals(userName)) {
             return true;
         }
@@ -180,34 +181,47 @@ public class UserManagerImpl implements IUserManager {
         return user != null;
     }
 
+	public boolean isValidUserByEmail(String email) throws UserException {
+		throw new Error("NOT IMPLEMENTED");
+//		return isValidUser(email);
+	}
+
     public IUser getSingleUser() {
-        class LocalPerson implements IPerson {
-            public String getEmail() {
-                return "";
-            }
+    	if (localUser == null) {
+    		try {
+		    	class LocalPerson implements IPerson {
+		            public String getEmail() {
+		                return "";
+		            }
+		            public String getUserID() {
+		                return IDavinciServerConstants.LOCAL_INSTALL_USER;
+		            }
+		            public String getDisplayName() {
+	            		return "";
+	            	}
+		        }
 
-            public String getUserName() {
-                return IDavinciServerConstants.LOCAL_INSTALL_USER;
-            }
-        }
-        IStorage userDir = this.baseDirectory;
+	    		IStorage userDir = this.baseDirectory;
+	        	userDir.mkdir();
 
-        userDir.mkdir();
-        IUser user =  new User(new LocalPerson(), userDir);
-        IStorage settingsDir = this.baseDirectory.newInstance(userDir, IDavinciServerConstants.SETTINGS_DIRECTORY_NAME);
-        if (!settingsDir.exists()) {
-            settingsDir.mkdir();
-            IVResource project = user.createProject(IDavinciServerConstants.DEFAULT_PROJECT);
-        }
-       return user;
-
+	        	localUser = new User(new LocalPerson(), userDir);
+	       		IStorage settingsDir = this.baseDirectory.newInstance(userDir, IDavinciServerConstants.SETTINGS_DIRECTORY_NAME);
+	        	if (!settingsDir.exists()) {
+	           		settingsDir.mkdir();
+	            	localUser.createProject(IDavinciServerConstants.DEFAULT_PROJECT);
+	        	}
+    		} catch (IOException e) {
+    			return null; //TODO
+    		}
+    	}
+    	return localUser;
     }
 
 	public IUser getUser(HttpServletRequest req) {
+		if (ServerManager.LOCAL_INSTALL) {
+			return this.getSingleUser();
+		}
 		return (IUser) req.getSession().getAttribute(IDavinciServerConstants.SESSION_USER);
 	}
-
-
-
 
 }

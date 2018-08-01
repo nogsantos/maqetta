@@ -78,6 +78,10 @@ IF EXIST %MAQETTA_BUILD_DIR%\repository\maqetta\.git (
     git clone %gitRepository%
 )
 
+rem "Initializing and updating submodules..."
+cd %MAQETTA_BUILD_DIR%\repository\maqetta
+git submodule update --init --recursive
+
 rem
 rem Change directory to the build directory.
 rem

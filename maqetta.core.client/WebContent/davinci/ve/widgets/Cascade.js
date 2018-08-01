@@ -1,27 +1,19 @@
 define(["dojo/_base/declare",
-        "davinci/workbench/WidgetLite",
-        "davinci/workbench/Preferences",
-       
-        "davinci/Workbench",
-       
-        "davinci/Runtime",
-        
-        "davinci/html/CSSModel",
-        "davinci/ui/widgets/DocileDialog",
-        "davinci/ve/States",
-        "davinci/ui/ErrorDialog",
-        "dojo/i18n!davinci/ve/nls/ve",
-        "dojo/i18n!dijit/nls/common",
-        
-        
-       
-],function(declare,WidgetLite,Preferences,Workbench, Runtime, CSSModel, DocileDialog, States, ErrorDialog, veNLS,commonNLS){
-	var cascade =  declare("davinci.ve.widgets.Cascade",  [WidgetLite], {
-	
+        "../../workbench/WidgetLite",
+        "../../workbench/Preferences",
+        "../../Workbench",
+        "../../html/CSSModel",
+        "../../library",
+        "../../Theme",
+    	"../../html/CSSRule",
+        "../States",
+        "dojo/i18n!../nls/ve",
+        "system/resource"
+],function(declare,WidgetLite,Preferences,Workbench, CSSModel, Library, Theme, CSSRule, States, veNLS, systemResource){
+	var cascade =  declare("davinci.ve.widgets.Cascade", [WidgetLite], {
 		target : null,
 		targetField : null,
 		toggleClasses : null,
-		targetFile : "app.css",
 		// CSS selector regular expressions used in calculating specificity values and comparing rules
 		_regex_combinators : /[\s\~\+\>]+/,
 		_regex_not_pseudoclass : /(.*)\:not\((.*)\)(.*)/,
@@ -43,14 +35,15 @@ define(["dojo/_base/declare",
 		
 		buildRendering: function(){
 			this.domNode =   dojo.doc.createElement("div");
-			this.domNode
 			this.container =   dojo.doc.createElement("div");
 			dojo.addClass(this.container,"showCascade");
 			this.domNode.appendChild(this.container);
-			this.topDiv = dojo.doc.createElement("div");
-	
-			
-			this.container.appendChild(this.topDiv);
+			this.topDiv = dojo.create('div', 
+					{'class':'cascadeTopDiv'},
+					this.container);
+			this.cascadeTableDiv = dojo.create('div', 
+					{'class':'cascadeTableDiv'},
+					this.container);
 			dojo.removeClass(this.container, "showAllValues");
 	
 			if(!dojo.isArray(this.target)){
@@ -70,12 +63,13 @@ define(["dojo/_base/declare",
 					return widget.get('value'); 
 				};
 				this._setFieldValue = function(value, loc){
-					
+					if (!widget.set) {return;} // #23 FIXME why is there no set
 					this._value = value || "";
 					this._loc = loc;
-					
-					if(widget._setBaseLocationAttr)
-						widget.set('baseLocation', loc?loc.getPath():null);
+
+					if(widget._setBaseLocationAttr){
+						widget.set('baseLocation', (loc && loc.getPath) ?loc.getPath():null); //#23 FIXME why no getPath
+					}
 					widget.set('value', this._value, true);
 				};
 				dojo.connect(widget, "onChange", this, "_onFieldChange");
@@ -100,19 +94,20 @@ define(["dojo/_base/declare",
 		},
 		
 		
-		_canModifyRule : function(modifiedRule){
+		_canModifyRule: function(modifiedRule){
 			
 			// not all "rules" passed in are rules, and sometimes they are null (in case of element.style).
-			if(!modifiedRule || !modifiedRule.getCSSFile) // empty object, in cases like element.style there is no rule
+			if(!modifiedRule || !modifiedRule.getCSSFile) {// empty object, in cases like element.style there is no rule
 				return true; 
-			
+			}
+
 			var cssFile = modifiedRule.getCSSFile();
-			if(cssFile==null) return true;
-			
-			
-			var resource = cssFile.getResource();
+			if (!cssFile) {
+				return true;
+			}
+
+			var resource = systemResource.findResource(cssFile.url);
 			return !resource.readOnly();
-			
 		},
 		
 		/**
@@ -147,8 +142,20 @@ define(["dojo/_base/declare",
 			if(this._value==this._getFieldValue() && valueArrayCompare(this._valueArray, this._valueArrayNew)){
 				return;
 			}
+			if (this._values.length < 1) {
+				/*
+				 * no cascade rules this should only happen when we are in theme editor and the 
+				 * user has selected a widget or subwidget and then a state not supported by the widget
+				 * then changes a property that 
+				 * the true fix to this will be when #226 is implemented
+				 * until then this will prevent an exception.
+				*/
+				return; // no cascade rules.
+			}
 			if(this._getFieldValue()=="(overrides)"){
-				this._setFieldValue("(overrides)", null);
+				if(this._setFieldValue){
+					this._setFieldValue("(overrides)", null);					
+				}
 				return;
 			}
 	
@@ -165,8 +172,9 @@ define(["dojo/_base/declare",
 			if(this._widget && this.target && this.target.length>0){
 				var propName = this.target[0];
 				var context = this._widget.getContext();
+				var cascadeBatch;
 				if(context){
-					var cascadeBatch = context.cascadeBatch;
+					cascadeBatch = context.cascadeBatch;
 				}
 				if(cascadeBatch){
 					var askUserResponse = cascadeBatch.askUserResponse;
@@ -198,16 +206,16 @@ define(["dojo/_base/declare",
 				innerResolveFunc();
 		
 			}else{		// askUserResponse is undefined
-				var askUser = false;
 				// New logic: prompt user only if theme CSS files are going to change
+				var askUser = false;
 				var content = null;		
 				var langObj = veNLS;
-				if(this._values[this._targetValueIndex].readOnly){
+				if(this._values[this._targetValueIndex].readOnly && this._editor.editorID != 'davinci.themeEdit.ThemeEditor'){ // #23 theme editor only writes out deltas
 					//FIXME: the commented out message in next line provides a more informative error message
-		            var helpLink = "<a href='app/docs/index.html#peAppCss' target='_blank'>"+ langObj.creatingStyleRules +"</a>";
+		            var helpLink = "<a href='app/docs/index.html#CreatingStyleRulesWithAppCss' target='_blank'>"+ langObj.creatingStyleRules +"</a>";
 					var content = langObj.propChangeCannotComplete + "<br><br>" + dojo.string.substitute(langObj.toChangeProperty,[helpLink]) + "<br/><br/>";
-					var errorDialog = new ErrorDialog({errorText: content});
-					davinci.Workbench.showModal(errorDialog, langObj.errorModifyingValue, 'width:300px', dojo.hitch(this, function(){
+
+					davinci.Workbench.showMessage(langObj.errorModifyingValue, content, {width: 350}, dojo.hitch(this, function(){
 						innerResolveFunc();
 						return true;
 					}));
@@ -215,50 +223,55 @@ define(["dojo/_base/declare",
 						cascadeBatch.askUserResponse = false;
 					}
 					this._setFieldValue(this._value,this._loc);
-					return;
-				}else if(this._values[this._targetValueIndex].type=="theme" &&
+				}else if((this._values[this._targetValueIndex].type=="theme" || this._values[this._targetValueIndex].proposalTarget =='theme')&&
 						   editorPrefs.cssOverrideWarn &&
 							this._editor.supports("MultiPropTarget")){
-					askUser = true;
-					var helpLink = "<a href='app/docs/index.html#peAppCss' target='_blank'>"+ langObj.creatingStyleRules +"</a>";
-		            content = langObj.changeWillModify+"<br><br>"+dojo.string.substitute(langObj.insteadOfChanging,[helpLink])+"<br><br>"+langObj.okToProceed;
-		        }
-				// Old prompt if changing app.css or other non-theme CSS file:
-				// content = "This change will modify a CSS rule within a CSS file and therefore may globally effect other widgets. OK to proceed with this change?";
-		
-				if(askUser){
-					var overRide = new DocileDialog({content:content,
-																		callBack:dojo.hitch(this, function(result){
-																		
-																			if(result.value=="OK"){
-																				if(cascadeBatch){
-																					cascadeBatch.askUserResponse = true;
-																				}
-																				innerChangeValueFunc(this);
-																				innerResolveFunc();
-																			}else{
-																				if(cascadeBatch){
-																					cascadeBatch.askUserResponse = false;
-																				}
-																				// set back to original value
-																				this._setFieldValue(this._value,this._loc);
-																				innerResolveFunc();
-																			}
-																			
-																			if(!result.alwaysShow){
-																				editorPrefs.cssOverrideWarn = false;
-																				Preferences.savePreferences('davinci.ve.editorPrefs',null, editorPrefs);
-																			}
-																			
-																		})});
-																			
-					
-				}else{
+					require(['davinci/ve/widgets/ChangeWillModify'], dojo.hitch(this, function(ChangeWillModify) {
+							function _submit() {
+								if(cascadeBatch){
+									cascadeBatch.askUserResponse = true;
+								}
+								innerChangeValueFunc(this);
+								innerResolveFunc();
+
+								if (cwm.checkbox.get("checked")) {
+									editorPrefs.cssOverrideWarn = false;
+									Preferences.savePreferences('davinci.ve.editorPrefs',null, editorPrefs);
+								}
+							}
+
+							var cwm = new ChangeWillModify();
+							var dialog = davinci.Workbench.showDialog({
+								title: "", 
+								content: cwm, 
+								style: {width: 350}, 
+								okCallback: dojo.hitch(this, _submit), 
+								okLabel: null, 
+								hideCancel: null, 
+								submitOnEnter: true
+							});
+
+							dojo.connect(dialog, "onCancel", dojo.hitch(this, function() {
+									if (cascadeBatch){
+										cascadeBatch.askUserResponse = false;
+									}
+
+									// set back to original value
+									this._setFieldValue(this._value,this._loc);
+									innerResolveFunc();
+
+									if (cwm.checkbox.get("checked")) {
+										editorPrefs.cssOverrideWarn = false;
+										Preferences.savePreferences('davinci.ve.editorPrefs',null, editorPrefs);
+									}
+							}));
+
+					}));
+				}else {
 					innerChangeValueFunc(this);
 					innerResolveFunc();
 				}
 			}
-			
 		},
 		
 		_changeValue : function(targetIndex,value){
@@ -268,7 +281,7 @@ define(["dojo/_base/declare",
 			//   any other value (null/undefined/"Normal"/etc) => apply to Normal state
 			var applyToWhichStates = undefined;
 			if(this._whichStateInputElement && this._whichStateInputElement.checked){
-				applyToWhichStates = "current";
+				applyToWhichStates = this._whichState;
 			}
 			var targetRule = this._values[targetIndex];
 			var valueObject = [];
@@ -310,11 +323,13 @@ define(["dojo/_base/declare",
 		},
 		
 		_getShortHands : function(){
-			if(this._shorthands)
+			if (this._shorthands) {
 				return this._shorthands;
+			}
 			this._shorthands = [];
-			for(var i = 0;i<this.target.length;i++)
+			for(var i = 0;i<this.target.length;i++) {
 				this._buildShortHands(this.target[i]);
+			}
 		
 			return this._shorthands;
 		},
@@ -347,7 +362,95 @@ define(["dojo/_base/declare",
 			alert(veNLS.valueIsOverriden);
 			return false;
 		},
+
+		_getSelector: function(widget, target){
+			// return rules based on metadata IE theme
 			
+			var theme = this.context.getThemeMeta();
+			if(!theme){
+				return [];
+			}
+			// Note: Let's be careful to not get confused between the states in theme metadata
+			// and the user-defined interactive states that are part of a user-created HTML page
+			// For theme editor, we need to use whatever state is selected in States palette
+			// For page editor, always use "Normal"
+			var state = "Normal";
+	/*FIXME: OLD LOGIC
+			if (this.context.editor.editorID == 'davinci.themeEdit.ThemeEditor'){
+	//FIXME: Ramifications if nested states? (Maybe OK: theme editor specific)
+	//getState(node)
+				state = davinci.ve.states.getState();
+			}
+	*/
+			
+			var widgetType = theme.loader.getType(widget),
+				selectors = theme.metadata.getStyleSelectors(widgetType,state);
+
+			if(selectors){
+				for(var name in selectors){
+					for(var i = 0; i < selectors[name].length; i++){
+						for(var s = 0 ; s < target.length; s++) {
+							if(target[s] == selectors[name][i]){
+								return name;
+							}
+						}
+					}
+				}
+			}
+		},
+
+		_getMetaTargets: function(widget, target){
+			var name = this._getSelector(widget, target),
+				rules = this.context.getModel().getRule(name); 
+			/*
+			 * getRule returns all rules that match the selector, this can be to many in the case of combined rules
+			 * so weed them out so we have an exact match to the metaData
+			 */
+			return rules.filter(function(rule){
+				return rule.getSelectorText() == name;
+			});
+		},
+
+		_getSelectionCssRules: function(targetDomNode){
+			this.context._cssCache = this.context._cssCache || {}; // prevent undefined exception in theme editor
+			var hashDomNode = function (node) {
+				return node.id + "_" + node.className;
+			};
+			var selection = this.context.getSelection();
+			if (!targetDomNode && !selection.length) {
+				return {rules:null, matchLevels:null};
+			}
+			
+			var targetDom = targetDomNode || selection[0].domNode || selection[0],
+				domHash = hashDomNode(targetDom);
+			
+			/*
+			if(this.context._cssCache[domHash])
+				return this.context._cssCache[domHash];
+			*/
+			
+			if(selection.length){
+				var match = this.context._cssCache[domHash] = this.context.model.getMatchingRules(targetDom, true);
+				if (this.context.cssFiles) {
+					this.context.cssFiles.forEach(function(file){
+						file.getMatchingRules(targetDom, match.rules, match.matchLevels); // adds the dynamic rules to the match
+					});
+					//this.context.cssFiles[0].getMatchingRules(targetDom, match.rules, match.matchLevels); // adds the dynamic rules to the match
+				}
+				match.rules.forEach(function(rule) {
+					/* remove stale elements from the cache if they change */
+					var handle = dojo.hitch(rule, "onChange", this, function(){
+						delete this.context._cssCache[domHash];
+						connect.unsubscribe(handle);
+					});
+				}, this);
+				
+				return match;
+			}
+
+			return {rules:null, matchLevels:null};
+		},
+
 		_getAllRules : function(){
 			//FIXME: This function is a short-term solution that gets things working reasonably
 			// and depends on the fact that the current software always puts themes in the
@@ -366,12 +469,12 @@ define(["dojo/_base/declare",
 			}
 			
 			var values =  [];
-			if (this._editor.editorID != 'davinci.ve.ThemeEditor'){
+			if (this._editor.editorID != 'davinci.themeEdit.ThemeEditor'){
 				/* element rules */
 				var defaultSelection=this._getDefaultSelection();
 				
 				if(this._editor.supports("inline-style") && 
-				  (this._topWidgetDom==this._widget.domNode || defaultSelection=="element.style")){
+				  (/*this._topWidgetDom==this._widget.domNode ||*/ defaultSelection=="element.style")){ //#2409 just use default selector result 
 					var vArray = this._getAttribStyleValue();
 					var value = null;
 					for(var vIndex=0; vIndex<vArray.length; vIndex++){
@@ -387,7 +490,7 @@ define(["dojo/_base/declare",
 				}
 				
 				/* selection (queried) rules */
-				var v = this.context.getSelectionCssRules(this._topWidgetDom);
+				var v = this._getSelectionCssRules(this._topWidgetDom);
 				if(v && v.rules){
 					for(var i=0;i<v.rules.length;i++){
 						var s="";
@@ -401,6 +504,8 @@ define(["dojo/_base/declare",
 									matchLevel:v.matchLevels[i], type:ruletype});
 					}
 				}
+				// #23
+				var deltas = this._addDeltaRules(this._widget, values);
 				
 				/* create list of proposals for new rules (using classes defined on this widget) */
 				var allCssClasses = this._getClasses(this._widget);
@@ -408,33 +513,46 @@ define(["dojo/_base/declare",
 				for(var i=0;i<allCssClasses.length;i++){
 					var thisClass=allCssClasses[i];
 					if(typeof thisClass=="string" && thisClass.length>0){
-						var proposedNewRule=this._getClassSelector(thisClass);
-						// See if there is an existing rule for thisClass
-						var existingRule=false;
-						for(var j=0; j<values.length; j++){
-							if(this._compareSelectors(values[j].ruleString,proposedNewRule)){
-								values[j].className = thisClass;
-								existingRule=true;
-								break;
+						var proposedNewRules=this._getClassSelector(thisClass);
+						proposedNewRules.forEach(function(proposedNewRule){
+							// See if there is an existing rule for thisClass
+							var existingRule=false;
+							for(var j=0; j<values.length; j++){
+								if(this._compareSelectors(values[j].ruleString,proposedNewRule)){
+									values[j].className = thisClass;
+									existingRule=true;
+									break;
+								}
 							}
-						}
-						if(!existingRule){
-							var matchLevel = this._computeMatchLevelSelector(proposedNewRule);
-							values.splice(nProposals,0,{rule:null, ruleString:proposedNewRule, 
-										targetFile:this.targetFile, className:thisClass,
-										value:null, matchLevel:matchLevel, type:'proposal'});
-							nProposals++;
-						}
+							if(!existingRule){
+								var matchLevel = this._computeMatchLevelSelector(proposedNewRule);
+								values.splice(nProposals,0,{rule:null, ruleString:proposedNewRule, 
+											targetFile:this.targetFile, className:thisClass,
+											value:null, matchLevel:matchLevel, type:'proposal'});
+								nProposals++;
+							}
+						}.bind(this));
+						
 					}
 				}
 			}
 			/* theme/meta rules */
-			if (this._editor.editorID == 'davinci.ve.ThemeEditor'){
-				v = this._editor._getCssRules(this._widget, null, this._editor._currentState);
-			} else if(this._widget){
-				v = this.context.getMetaTargets(this._widget,this.target);
-			}else{
-				v=[];
+			if (this._editor.editorID == 'davinci.themeEdit.ThemeEditor'){
+				v = this._editor._getCssRules(this._widget, this._editor._selectedSubWidget, this._editor._currentState);
+				// #23
+				if (v){
+					// cascade excepts the rules in decending order
+					var t = [];
+					for (var x = v.length -1; x > -1; --x){
+						t.push(v[x]);
+					}
+					v = t;
+				}
+				// #23
+			} else if(this._widget) {
+				v = this._getMetaTargets(this._widget, this.target);
+			} else {
+				v = [];
 			}
 			
 			for(var i = 0;i<v.length;i++){
@@ -446,14 +564,14 @@ define(["dojo/_base/declare",
 					}
 				}
 				if(!found)
-					values.push({rule : v[i], matchLevel: 'theme', type:'theme'});
+					values.push({rule: v[i], matchLevel: 'theme', type:'theme'});
 			}
 			
 			return values;
 		},
 		
 		_buildCssRuleset : function(){
-			//if(this._isTarget("left")) debugger;
+			//if(this._isTarget("background-color")) debugger;
 			var allRules = this._getAllRules();
 			this._values = [];
 			//Disabled hasOverride logic - had bugs, causes problems with logic and not sure it helps user
@@ -565,8 +683,15 @@ define(["dojo/_base/declare",
 	
 		
 		_updateCascadeList : function(){
-			if(!this._widget){
+			
+			if(this._setFieldValue){
+				/*
+				 * Clear the old value in case we have no new value to set.
+				 * This happends often in theme editor
+				 */
 				this._setFieldValue("",null);
+			}
+			if(!this._widget || !this._widget.domNode){
 				dojo.addClass(this.container,"dijitHidden");
 				return;
 			}
@@ -653,35 +778,40 @@ define(["dojo/_base/declare",
 				row.appendChild(column);
 				table.appendChild(row);
 			}
-	
-			// Checkbox to allow user to control whether the current style settings
-			// should apply to the "Normal" style or the current interactive state.
+			
+			// Add checkboxes to allow user to control whether the current style settings
+			// should apply to the "Normal" style or the current interactive states.
 			// FIXME: This feature just has to have bugs. For example, I don't see
 			// logic for displaying the current property value when the state != "Normal"
 			// FIXME: Ultimately, we will want to allow the user to select any number
 			// of interactive states, not just "Normal" or the current state
 			// FIXME: The default value of this checkbox should be true if there
 			// is a custom value for the property for the current state, else false.
+			this._widgetState = this._whichStateInputElement = undefined;
 			var langObj = veNLS;
-			var state=States.getState();
-			var isNormalState = States.isNormalState(state);
-			if(!isNormalState){
-				row = dojo.doc.createElement("tr");
-				row.className = "propWhichStateRow";
-				column = dojo.doc.createElement("td");
-				column.colSpan = '3';
-				var whichStateInputElement = dojo.create("input", {type:'checkbox',checked:false,className:'propWhichStateInput'});
-				this._whichStateInputElement = whichStateInputElement;
-				column.appendChild(whichStateInputElement);
-				var whichStateLabelElement = dojo.create("label", {className:'propWhichStateLabel'});
-				whichStateLabelElement.innerHTML = dojo.string.substitute(langObj.onlyApplyToState,[state]);
-				column.appendChild(whichStateLabelElement);
-				column.className = "propWhichStateCell";
-				row.appendChild(column);
-				table.appendChild(row);
-			}
-			
-			this.topDiv.appendChild(table);
+			var node = this._widget.domNode;
+			var currentStatesList = States.getStatesListCurrent(node);
+			for(var i=0; i<currentStatesList.length; i++){
+				if(currentStatesList[i]){
+					var state = currentStatesList[i];
+					row = dojo.doc.createElement("tr");
+					row.className = "propWhichStateRow";
+					column = dojo.doc.createElement("td");
+					column.colSpan = '3';
+					var whichStateInputElement = dojo.create("input", {type:'checkbox',checked:false,className:'propWhichStateInput'});
+					this._whichState = state;
+					this._whichStateInputElement = whichStateInputElement;
+					column.appendChild(whichStateInputElement);
+					var whichStateLabelElement = dojo.create("label", {className:'propWhichStateLabel'});
+					whichStateLabelElement.innerHTML = dojo.string.substitute(langObj.onlyApplyToState,[state]);
+					column.appendChild(whichStateLabelElement);
+					column.className = "propWhichStateCell";
+					row.appendChild(column);
+					table.appendChild(row);
+					break;
+				}
+			}			
+			this.cascadeTableDiv.appendChild(table);
 			this._updateFieldValue();
 		},
 			
@@ -726,32 +856,49 @@ define(["dojo/_base/declare",
 			}
 		},
 		
-		_isTarget : function(t){
+		_isTarget: function(t){
 			if (t === '$std_10') {
 				// this means all values are vaild for this selctor
 				// FIXME: at some point in the future we will define $std_10 but for now it means all
 				return true;
 			}
-			for(var i = 0;i<this.target.length;i++)
-				if(this.target[i]== t) return true;
+
+			for(var i = 0;i<this.target.length;i++) {
+				if(this.target[i]== t) {
+					return true;
+				}
+			}
 			
 			return false;
 			
 		},
-		_updateFieldValue : function(){
+		
+		_targetIsRootProperty: function() {
+			/*
+			 * Some properties should always be applied to the root element by default
+			 */
+			var rootPropeties = ['left', 'top', 'right', 'bottom'];
+			for(var i = 0;i<this.target.length;i++) {
+				if(rootPropeties.indexOf(this.target[i]) > -1) {
+					return true;
+				}
+			}
+			return false;
+		},
+
+		_updateFieldValue: function(){
 			
 			function isReadOnly(value){	
 				if(value && value.rule && value.rule.getCSSFile){
-					var file = value.rule.getCSSFile();
-					var resource = file.getResource();
-					return resource.readOnly();
+					return systemResource.findResource(value.rule.getCSSFile().url).readOnly();
 				}else{
 					return false;
 				}
 			}
 			
-			if(this._widget==null)
+			if(this._widget==null) {
 				this._setFieldValue("",this._getBaseLocation());
+			}
 		
 			/*Disabled hasOverride logic - had bugs, causes problems with logic and not sure it helps user
 			if(this._hasOverride){
@@ -785,7 +932,10 @@ define(["dojo/_base/declare",
 				/* skip read only values */
 				//if(this._values[i].readOnly) continue;
 				
-				if((this._values[i].value && !foundValue && !defaultValue) ||
+				var isPageEditor = (this._editor.editorID == 'davinci.ve.HTMLPageEditor');
+				var isThemeEditor = (this._editor.editorID == 'davinci.themeEdit.ThemeEditor');
+				if((this._values[i].value && !foundValue && isThemeEditor) ||	// for theme editor, choose first CSS rule with a value
+						(this._values[i].value && !foundValue && isPageEditor && !this._values[i].readOnly) ||	// for page editor, skip readonly values
 						(!foundValue && !defaultValue && 
 						 this._values[i].type!="element.style" && 
 						 this._values[i].rule &&
@@ -803,71 +953,165 @@ define(["dojo/_base/declare",
 				}
 			
 			}
-			if(!foundValue && !defaultValue && (this._editor.editorID != 'davinci.ve.ThemeEditor')){
+			if(!foundValue && !defaultValue && isPageEditor){
 				this.selectRuleBySelector("element.style");
 			}
 			
 		},
-		_getDefaultSelection : function(){
-			
-			/*var theme = this.context.getThemeMeta();
-			if(!theme)
+
+		_getThemeMetaDataByWidget: function(widget){
+			var theme = this.context.getThemeMeta();
+			if (!theme) {
 				return null;
+			}
 			
-			var widgetType = theme.loader.getType(this._widget);*/
+			var widgetType = theme.loader.getType(widget);
+			var meta = theme.loader.getMetaData(widgetType);
+			
+			var isHtmlWidget = false;
+			var parts = (typeof widgetType == 'string') ? widgetType.split('.') : null;
+			if(parts && parts[0] == 'html'){
+				isHtmlWidget = true;
+			}
+			if (!meta && this.context.cssFiles && !isHtmlWidget){
+				// chack the dynamically added files
+				for (var i = 0; i < this.context.cssFiles.length; i++){
+					var dTheme = Theme.getThemeByCssFile(this.context.cssFiles[i]);
+					if (dTheme) {
+						var themeMeta = Library.getThemeMetadata(dTheme);
+						// found a theme for this css file, check for widget meta data
+						meta = themeMeta.loader.getMetaData(widgetType);
+						if (meta){
+							break;
+						}
+					}
+				}
+			}
+			return meta;
+		},
+
+		_getDefaultSelection: function(){
 			
 			// Note: Let's be careful to not get confused between the states in theme metadata
 			// and the user-defined interactive states that are part of a user-created HTML page
 			// For theme editor, we need to use whatever state is selected in States palette
 			// For page editor, always use "Normal"
 			var state = "Normal";
-			if (this._editor.editorID == 'davinci.ve.ThemeEditor'){
+			if (this._editor.editorID == 'davinci.themeEdit.ThemeEditor'){
 				state = state || States.getState();
 			}
-	
-			//var meta = theme.loader.getMetaData(widgetType);
-			var meta = this.context.getThemeMetaDataByWidget(this._widget);
+
+			var meta = this._getThemeMetaDataByWidget(this._widget);
 			if(!meta || !meta.states){
-				
-			//	console.log("error loading metadata:\nwidgetType:" + widgetType + "\nfound:\n" + meta);
+				// no meta data so default is all properties are applied to the root element 
+				return "element.style";
+			}
+			if (this._targetIsRootProperty()){
+				// the target property is one of the properties that should always
+				// default to the root element #3844
 				return "element.style";
 			}
 			if(meta &&  meta.states[state] && meta.states[state].elements ){
 				var md = meta.states[state].elements;
 				for(var name in md){
-						for(var p=0;p<md[name].length;p++){
-							if( this._isTarget(md[name][p])){	
-								if( name=="$root")
-									return "element.style";
-								else
-									return  name;
-							}
-						}
-				}
-			}
-			
-			/* no metadata for where this value goes in DOM, search for default target rule */
-			if(meta && meta.states[state] && meta.states[state].selectors){
-				var md = meta.states[state].selectors;
-				for(var name in md){
-					for(var c=0;c<md[name].length;c++){
-						if(this._isTarget(md[name][c])){
-							if (meta.rootSelectors) {
-								for (var i = 0; i < meta.rootSelectors.length; i++){
-									if (name == meta.rootSelectors[i]){
-										// if the selector is in the rootSelectors array then apply this
-										// prop to the node element by default
-										return "element.style";
-									}
-								}
-							}
-							return name;
+					for(var p=0;p<md[name].length;p++){
+						if( this._isTarget(md[name][p])){	
+							if( name=="$root")
+								return "element.style";
+							else
+								return  name;
 						}
 					}
 				}
 			}
 			
+			/* no metadata for where this value goes in DOM, search for default target rule */
+			if(meta && meta.states[state] ){
+				var theme = this.context.getThemeMeta();
+				if (theme) {
+					var widgetType = theme.loader.getType(this._widget);
+					/*
+					 * Some default selectors are not created until the first access,
+					 * So use the getter to insure they are created.
+					 */
+					var md = theme.metadata.getStyleSelectors(widgetType, state, null); 
+					if(md){
+						for(var name in md){
+							for(var c=0;c<md[name].length;c++){
+								if(this._isTarget(md[name][c])){
+									if (meta.rootSelectors) {
+										for (var i = 0; i < meta.rootSelectors.length; i++){
+											if (name == meta.rootSelectors[i]){
+												// if the selector is in the rootSelectors array then apply this
+												// prop to the node element by default
+												return "element.style";
+											}
+										}
+									}
+									return name;
+								}
+							}
+						}
+					}
+				}
+				
+			}
+			
 			return null;
+		},
+		
+		_addDeltaRules : function(widget, values){
+
+			var state = "Normal";
+			var lastElementStyle = -1;
+			var deltas = [];
+			var cssFiles = this.context._getCssFiles();
+			var dynamicThemeUrl = (cssFiles &&  cssFiles.length > 0)? cssFiles[0].url: null;
+			var dynamicThemeReadOnly = false;
+			if (dynamicThemeUrl){
+				var file = systemResource.findResource(dynamicThemeUrl);
+				dynamicThemeReadOnly = file._readOnly;
+			}
+			if (this._editor.editorID == 'davinci.themeEdit.ThemeEditor'){
+				state = state || States.getState();
+			}
+			var meta = this._getThemeMetaDataByWidget(widget);
+			if(meta &&  meta.states[state] && meta.states[state].selectors ){
+				var md = meta.states[state].selectors;
+				for(var name in md){
+					var found = false;
+					for(var i=0; i < values.length; i++){
+						var r = values[i];
+						if(r.type === 'element.style') {
+							lastElementStyle = i;
+						}
+						if (r.type === 'theme' && r.ruleString === name && 
+							(r.rule.parent.relativeURL == this.context._themeUrl || r.rule.parent.url == dynamicThemeUrl)
+							) {
+							found = true;
+							break;
+						}
+					}
+					if (!found){
+						var matchLevel = this._computeMatchLevelSelector(name);
+						if (dynamicThemeUrl && !dynamicThemeReadOnly) { // add rule for dynamic file, in most cases mobile 
+							deltas.push({rule:null, ruleString:name, 
+								targetFile:dynamicThemeUrl, className: null,
+								value:null, matchLevel:matchLevel, type:'proposal'});
+						}
+						if (this.context._themeUrl && !this.context.theme.getFile().readOnly()) { // add rule for static file, in most cases desktop
+							deltas.push({rule:null, ruleString:name, 
+								targetFile:this.context._themeUrl, className: null,
+								value:null, matchLevel:matchLevel, type:'proposal', proposalTarget: 'theme'});
+						}
+					}
+				}
+			}
+			var n = lastElementStyle +1; // add the proposals after element.style
+			deltas.forEach(function(item){
+				values.splice(n++, 0,item);
+			});
+			return values;
 		},
 		
 		_getRuleTargetValue : function(rule){
@@ -909,9 +1153,17 @@ define(["dojo/_base/declare",
 			}else if(this._values[event.target].type=="proposal"){
 				var model = this.context.getModel();
 				var cssFile = model.find({elementType:'CSSFile', relativeURL: this._values[event.target].targetFile}, true);
-				loc=cssFile.getResource();
+				var contextCssFiles =  this.context._getCssFiles();
+				//#23
+				if (cssFile /*&& cssFile.length > 0*/) {
+					loc = systemResource.findResource(cssFile.url); //FIXME: can we skip findReource?
+				} else if (contextCssFiles[0].url == this._values[event.target].targetFile){ // FIXME should run the array
+					// maybe it's a dynamic theme (mobile)
+					loc = systemResource.findResource(contextCssFiles[0].url); //contextCssFiles[0].cssFiles[0];
+				}
+				//#23
 			}else{
-				loc = this._values[event.target].rule.getCSSFile().getResource();
+				loc = systemResource.findResource(this._values[event.target].rule.getCSSFile().url);  //FIXME: can we skip findReource?
 			}
 			this._setFieldValue(this._values[event.target].value || "",loc);
 			this._targetValueIndex = event.target;
@@ -951,8 +1203,11 @@ define(["dojo/_base/declare",
 			}
 			var s = "";
 			if(r.type=="proposal"){
-				//s+="[class:" + r.className + " - New rule in " + this.targetFile + "] ";
-				s+=dojo.string.substitute(langObj.newRule, [r.className,this.targetFile]);
+				if (r.className) {
+					s+=dojo.string.substitute(langObj.newRule, [r.className,r.targetFile]);
+				} else {
+					s+=dojo.string.substitute(langObj.newThemeRule, [r.targetFile]);
+				}
 				s+=r.ruleString;
 			}else{
 				var rule = r.rule;
@@ -987,7 +1242,28 @@ define(["dojo/_base/declare",
 			
 			return s;
 		},
-		
+
+		/* returns the top/target dom node for a widget for a specific property */
+		_getWidgetTopDom: function (widget, propertyTarget){
+			var selector = this._getSelector(widget, propertyTarget);
+			// find the DOM node associated with this rule.
+			var findTarget = function(target, rule){
+				if(rule.matches(target)) {
+					return target;
+				}
+				for(var i = 0;i<target.children.length;i++){
+					return findTarget(target.children[i], rule); //FIXME: return stops for-loop at i=0
+				}
+			};
+
+			if(selector){
+				var rule = new CSSRule();
+				rule.setText(selector + "{}");
+				return findTarget(widget.domNode || widget, rule);
+			}
+			return null;
+		},
+
 		_widgetSelectionChanged : function (changeEvent){
 			//	debugger;
 		//	if(	!this._editor )
@@ -999,27 +1275,33 @@ define(["dojo/_base/declare",
 				return false;
 				*/
 			this._widget = widget;
-			if(this._widget)
-				this._topWidgetDom = this.context.getWidgetTopDom(this._widget, this.target) || this._widget.domNode || this._widget;
-			else
-				this._topWidgetDom = null;
 			
+			if(this._widget){
+				this.context = widget.getContext(); // #3046 at start up we can end up with no context or editor set
+				this.targetFile = this.context.getAppCssRelativeFile();		// path to app.css
+				this._editor = this.context.editor; // due to async editor selection getting published before the cascade is built
+				                                    // so best to set this here on widget selection
+				this._topWidgetDom = this._getWidgetTopDom(this._widget, this.target) || this._widget.domNode || this._widget;
+			} else {
+				this._topWidgetDom = null;
+			}
+
 			this._updateCascadeList();	
-		
 		},
 		
-		_getBaseLocation : function(){
-			return this._editor.getContext().getBaseResource();
+		_getBaseLocation: function(){
+			return systemResource.findResource(this._editor.getContext().getDocumentLocation());
 		},
 		
-		_editorSelected : function(editorChange){
+		_editorSelected: function(editorChange){
 			this._editor = editorChange.editor;
 			var context;
 			if(this._editor && this._editor.getContext){
 				context = this._editor.getContext();
 			}
-			if(context){	
+			if(context && this._editor.supports("style")){	
 				this.context = context;
+				this.targetFile = context.getAppCssRelativeFile();		// path to app.css
 				var v = context.getSelection();
 				if(v.length>0){
 					this._widgetSelectionChanged(v);
@@ -1030,32 +1312,35 @@ define(["dojo/_base/declare",
 			}else{
 				this.context = null;
 				this._widget = null;
-				this._setFieldValue("",null);
+				if(this._setFieldValue){
+					this._setFieldValue("",null);
+				}
 			}
 			this._updateCascadeList();
 		},
 		
-		_onFieldFocus : function(){
-			if(this.context)
+		_onFieldFocus: function(){
+			if(this.context) {
 				this.context.blockChange(true);
+			}
 		},
+
 		_destroy: function(){
-			var containerNode = (this.topDiv);
+			var containerNode = (this.cascadeTableDiv);
 			dojo.forEach(dojo.query("[widgetId]", containerNode).map(dijit.byNode), function(w){
 				w.destroy();
 			});
 			while(containerNode.firstChild){
 				dojo._destroyElement(containerNode.firstChild);
 			}
-			this.topDiv = dojo.doc.createElement("div");
-			this.container.appendChild(this.topDiv);
 			dojo.forEach(this._handles,dojo.disconnect);
 			this._handles = [];
 		},
 		
-		_onFieldBlur : function(){
-			if(this.context)
-				this.context.blockChange(false);		
+		_onFieldBlur: function(){
+			if(this.context) {
+				this.context.blockChange(false);
+			}
 		},
 		
 		_getClasses : function(target){
@@ -1067,28 +1352,66 @@ define(["dojo/_base/declare",
 			/* have to filter out dupes */
 			for(var i = 0;i<classes.length;i++){
 				for(var j=i+1;j<classes.length;j++){
-					if(classes[j]==classes[i])
+					if(classes[j]==classes[i]) {
 						classes.splice(j,1);
+					}
 				}
 			}
 			
 			return classes;
-			
 		},
-		
-		_getClassSelector : function (className){
+
+		_getRelativeMetaTargetSelector: function(target){
+			var theme = this.context.getThemeMeta();
+			if(!theme) {
+				return [];
+			}
+	/*FIXME: OLD LOGIC
+	//FIXME: Ramifications if nested states?
+	//FIXME: getState(node)?
+			var state = davinci.ve.states.getState();
 			
-			var rel = this.context.getRelativeMetaTargetSelector(this.target);
-			var text = rel.length>0?rel[0]:"";
-			var bodyId = this.context.getBodyId();
+			if(!state) {
+				state = "Normal";
+			}
+	*/
+			var state = "Normal";
+			var widget = this.context.getSelection();
+			if(!widget.length){
+				return [];
+			}
+			widget = widget[0];
+			
+			var widgetType = theme.loader.getType(widget);
+			return theme.metadata.getRelativeStyleSelectorsText(widgetType, state, null, target, this.context.getTheme().className);
+		},		
+
+		_getClassSelector: function (className){
+			
+			var rel = this._getRelativeMetaTargetSelector(this.target);
+			var text = rel.length ? rel[0] : "";
+
+			var bodyNode = this.context.model.find({elementType:'HTMLElement', tag:'body'}, true),
+				id = bodyNode.find({elementType:'HTMLAttribute', name:'id'}, true);
+				bodyId = id.value;
+
 			var theme = this.context.getTheme();
+			var rules = [];
+			if (!theme) {
+				return rules;
+			}
 			var bodyClass = theme.className;
 			
 			/* PITFALL here. if the relative selector doesn't start at the top node, 
 			 * then it needs to be a child selector (ie with a space) and no sibling.
 			 */
-			return "#" + bodyId + "." + bodyClass + " ." + className  + text;
+			var selectors = text.split(",");
+			selectors.forEach(function(selector){
+				selector = selector.trim();
+				rules.push("#" + bodyId + "." + bodyClass + " ." + className  + selector);
+			}.bind(this));
 			
+			return rules;
 		},
 	
 		// The following two routines calculates a specificity value for a CSS selector
@@ -1114,6 +1437,7 @@ define(["dojo/_base/declare",
 			}
 			return matchLevel;
 		},
+
 		_computeMatchLevelSimpleSelector : function (ss){
 			var matchLevel=0;
 			do{

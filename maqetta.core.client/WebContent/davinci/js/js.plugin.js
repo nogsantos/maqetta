@@ -12,10 +12,8 @@ return {
 		isDefault: true,
 		//TODO implement		 icon : "",
 		editorClass: "davinci/js/ui/JavaScriptEditor",
-		palettesToTop: [
-			"davinci.ve.style", //Properties
-            "davinci.ui.navigator", //Files
-        ]
+		palettePerspective: "davinci.html.htmlEditor",
+        expandPalettes: ["left"]
 	},
 	"davinci.actionSets": [
 /*		{
@@ -90,30 +88,46 @@ return {
 		editorContribution: {
 			targetID: "davinci.js.JSEditor",
 			actions: [
-				{
-					id: "save",
-					iconClass: 'saveIcon',
-					run: function() {
-						require('../Workbench').getOpenEditor().save();
-					},
-					isEnabled: function(context) {
-						return true;
-					},
-					label: "Save",
-					toolbarPath: "save"
-				},
-				{
-					id: "saveas",
-					iconClass: 'saveAsIcon',
-					run: function() {
-						require("../ui/Resource").saveAs('js');
-					},
-					isEnabled: function(context) {
-						return require('../Workbench').getOpenEditor();
-					},
-					label: "Save As",
-					toolbarPath: "save"
-				}
+		              {
+		                  id: "savecombo",
+		                  className: "maqLabelButton",
+		                  showLabel: true,
+		                  label: "Save",
+		                  toolbarPath: "save",
+		                  type:'ComboButton',
+		                  run: function() {
+		                      require(['../Workbench'], function(workbench) {
+		                      		require("../ui/Resource").save();
+		                      });
+		                  },
+		                  isEnabled: function(context) {
+		                      return require('../Workbench').getOpenEditor();
+		                  },
+		                  menu:[
+		                     {
+		                          iconClass: 'saveIcon',
+		                          run: function() {
+		                          		require("../ui/Resource").save();
+		                          },
+		                          isEnabled: function(context) {
+		                              return require('../Workbench').getOpenEditor();
+		                          },
+		                          label: "Save",
+		                  		keyBinding: {accel: true, charOrCode: "s", allowGlobal: true}
+		                      },
+		                      {
+		                          iconClass: 'saveAsIcon',
+		                          run: function() {
+		                              require("../ui/Resource").saveAs('html');
+		                          },
+		                          isEnabled: function(context) {
+		                              return require('../Workbench').getOpenEditor();
+		                          },
+		                          label: "Save As",
+		                  		keyBinding: {accel: true, shift: true, charOrCode: "s", allowGlobal: true}
+		                      }
+		                  ]
+		              }
 /* XXX not working
 				{
 					id: "format",
@@ -170,7 +184,7 @@ return {
 		}
 	],
 	"davinci.preferences": [
-		{
+/*		{
 			name: "JavaScript",
 			id: "general",
 			category: ""
@@ -194,7 +208,8 @@ return {
 				switchSpacing: 3,
 				objectLitFieldSpace: 1
 			}
-		}
+		} 
+*/
 	],
 	"davinci.fileType": [
 		{

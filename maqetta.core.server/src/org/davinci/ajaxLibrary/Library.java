@@ -1,5 +1,6 @@
 package org.davinci.ajaxLibrary;
 
+import java.io.IOException;
 import java.net.URL;
 
 public abstract class Library {
@@ -7,18 +8,36 @@ public abstract class Library {
     String ID;
     String version;
     String defaultRoot;
-    String metadatapath;
+    String metadataPath;
+    String required;
+	String sourcePath;
 
     public String getID() {
         return this.ID;
     }
 
+    public String getRequired(){
+    	return this.required;
+    }
+    
+    public void setRequired(String required){
+    	this.required = required;
+    }
+    
     public void setMetadataPath(String path) {
-        this.metadatapath = path;
+        this.metadataPath = path;
     }
 
     public String getMetadataPath() {
-        return this.metadatapath;
+        return this.metadataPath;
+    }
+
+    public void setSourcePath(String path) {
+        this.sourcePath = path;
+    }
+
+    public String getSourcePath() {
+        return this.sourcePath;
     }
 
     public String getName() {
@@ -46,14 +65,14 @@ public abstract class Library {
 
     }
 
-    public abstract String getMetadata();
+    public abstract String getMetadata() throws IOException;
 
-    public abstract URL getURL(String path);
+    public abstract URL getURL(String path, boolean useSource);
 
-    public abstract URL[] find(String searchFor, boolean recurse);
+    public abstract URL[] find(String searchFor, boolean recurse, boolean useSource);
     
  
-    public abstract URL[] listURL(String path);
+    public abstract URL[] listURL(String path, boolean useSource);
 
     public int compareTo(Object item) {
         Library i = (Library) item;

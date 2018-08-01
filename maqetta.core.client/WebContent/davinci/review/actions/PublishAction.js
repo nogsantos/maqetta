@@ -4,8 +4,9 @@ define([
 	"davinci/review/widgets/PublishWizard",
 	"davinci/Runtime",
 	"dojox/widget/Toaster",
+	"davinci/ui/Dialog",
 	"dojo/i18n!./nls/actions"
-], function(declare, Action, PublishWizard, Runtime, Toaster, actionsNls) {
+], function(declare, Action, PublishWizard, Runtime, Toaster, Dialog, actionsNls) {
 
 var PublishAction = declare("davinci.review.actions.PublishAction", [Action], {
 
@@ -19,18 +20,19 @@ var PublishAction = declare("davinci.review.actions.PublishAction", [Action], {
 
 	run : function() {
 		var publishWizard = this.publishWizard = new PublishWizard();
-		this.dialog = new dijit.Dialog( {
-			title : actionsNls.newReview,
+		this.dialog = new Dialog({
+			contentStyle: {width:650,height:350},
+			title: this.node ? actionsNls.editReview : actionsNls.newReview,
 			onCancel: dojo.hitch(this, this.close),
 			onHide: dojo.hitch(this, this.hide)
 		});
 		this.dialog.setContent(publishWizard);
 		this.dialog.show();
 		dojo.connect(publishWizard, "onClose", this, this.close);
-		publishWizard.initData(this.node, this.isRestart);
-		publishWizard.updateSubmit();
-		publishWizard.reviewerStackContainer.resize();
-
+		publishWizard.initData(this.node, this.isRestart).then(function() {
+			publishWizard.updateSubmit();
+			publishWizard.reviewerStackContainer.resize();
+		});
 	},
 
 	hide: function() {

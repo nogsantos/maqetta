@@ -51,6 +51,7 @@
       <complexType>
          <choice minOccurs="0" maxOccurs="unbounded">
             <element ref="libraryPath"/>
+            <element ref="metadata"/>
          </choice>
          <attribute name="name" type="string">
             <annotation>
@@ -73,6 +74,13 @@
                </documentation>
             </annotation>
          </attribute>
+         <attribute name="required" type="string">
+            <annotation>
+               <documentation>
+                  
+               </documentation>
+            </annotation>
+         </attribute>
       </complexType>
    </element>
 
@@ -85,6 +93,25 @@
                </documentation>
             </annotation>
          </attribute>
+         <attribute name="location" type="string" use="required">
+            <annotation>
+               <documentation>
+                  
+               </documentation>
+            </annotation>
+         </attribute>
+         <attribute name="source" type="string">
+            <annotation>
+               <documentation>
+                  
+               </documentation>
+            </annotation>
+         </attribute>
+      </complexType>
+   </element>
+
+   <element name="metadata">
+      <complexType>
          <attribute name="location" type="string" use="required">
             <annotation>
                <documentation>

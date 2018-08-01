@@ -8,13 +8,15 @@ return {
     "davinci.view": [
         {
             id: "Palette",
-            title: "Widgets",
-            viewClass: "davinci/ve/palette/HtmlWidgets"
+            title: "Palette",
+            viewClass: "davinci/ve/palette/HtmlWidgets",
+            iconClass: "paletteIcon paletteIconWidgets"
         },
         {
             id: "states",
             title: "Scenes",
-            viewClass: "davinci/ve/views/StatesView"
+            viewClass: "davinci/ve/views/StatesView",
+            iconClass: "paletteIcon paletteIconStates"
         },
         /*
          * { id:"datastores", title:"DataStores", viewClass: "davinci/ve/views/DataStoresView" },
@@ -29,7 +31,7 @@ return {
 
         {
             id: "style",
-            title: "Properties",
+            title: "",	// Tab titles for property tabs are generated programmatically
             viewClass: "davinci/ve/views/SwitchingStyleView"
         }
     ],
@@ -41,6 +43,11 @@ return {
             views: [
                 {
                     viewID: "davinci.ve.Palette",
+                    position: "left",
+                    selected: true
+                },
+                {
+                    viewID: "davinci.ui.outline",
                     position: "left"
                 },
                 {
@@ -49,33 +56,24 @@ return {
                 },
                 {
                     viewID: "davinci.ui.comment",
-                    position: "right"
+                    position: "right",
+                    hidden: true
+                },
+                {
+                    viewID: "davinci.ve.states",
+                    position: "right-bottom",
+                    selected: true
                 },
                 {
                     viewID: "davinci.ui.navigator",
-                    position: "left-bottom"
+                    position: "left-bottom",
+                    selected: true
                 },
                 {
                     viewID: "davinci.review.reviewNavigator",
                     position: "left-bottom"
-                },
-                {
-                    viewID: "davinci.ui.outline",
-                    position: "left"
-                },
-                {
-                    viewID: "davinci.ve.states",
-                    position: "right-bottom"
                 }
-            /*
-             * { viewID: "davinci.ve.datastores", position: "right" }, { viewID: "davinci.ui.problems", position: "right-bottom" }
-             */
             ]
-        },
-        {
-            id: "test",
-            title: "test Page Design",
-            views: []
         }
     ],
 
@@ -83,31 +81,12 @@ return {
         {
             id: "HTMLPageEditor",
             name: "HTML Visual Editor",
-            extensions: "html",
+            extensions: ["html","htm", "php"],
             isDefault: true,
             // TODO implement icon : "",
             editorClass: "davinci/ve/PageEditor",
-            palettesToTop: [
-                "davinci.ve.Palette", //Widgets
-                "davinci.ui.navigator", //Files
-                "davinci.ve.style", //Properties
-                "davinci.ve.states" //States(Scenes)
-            ]
-        },
-        {
-            id: "ThemeEditor",
-            name: "Theme Editor",
-            // extensions : ["css", "theme"],
-            extensions: "theme",
-            defaultContent: "./defaultContent.css",
-            isDefault: true,
-            // TODO implement icon : "",
-            editorClass: "davinci/ve/themeEditor/ThemeEditor",
-            palettesToTop: [
-                "davinci.ve.style", //Properties
-                "davinci.ui.navigator", //Files
-                "davinci.ve.states" //States(Scenes)
-            ]
+            palettePerspective: "davinci.ve.pageDesign",
+            expandPalettes: ["left"]
         }
     ],
     "davinci.actionSets": [
@@ -116,184 +95,108 @@ return {
             visible: true,
             actions: [
                 {
-                    id: "davinci.ve.cut",
                     label: "Cut",
                     keySequence: "M1+X",
-                    iconClass: "editActionIcon editCutIcon",
+                    iconClass: "editActionIcon editCutIconSmall",
                     action: "davinci/ve/actions/CutAction",
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.copy",
                     label: "Copy",
                     keySequence: "M1+C",
-                    iconClass: "editActionIcon editCopyIcon",
+                    iconClass: "editActionIcon editCopyIconSmall",
                     action: "davinci/ve/actions/CopyAction",
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.paste",
                     keySequence: "M1+V",
-                    iconClass: "editActionIcon editPasteIcon",
+                    iconClass: "editActionIcon editPasteIconSmall",
                     label: "Paste",
                     action: "davinci/ve/actions/PasteAction",
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.delete",
                     keySequence: "DEL",
-                    iconClass: "editActionIcon editDeleteIcon",
+                    iconClass: "editActionIcon editDeleteIconSmall",
                     label: "Delete",
                     action: "davinci/ve/actions/DeleteAction",
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.surround.a",
+                    iconClass: "editActionIcon selectParentIconSmall",
+                    label: "Select parent",
+                    action: "davinci/ve/actions/SelectParentAction",
+                    menubarPath: "davinci.edit/cut"
+                },
+                {
+                    iconClass: "editActionIcon selectAncestorIconSmall",
+                    label: "Select ancestor...",
+                    action: "davinci/ve/actions/SelectAncestorAction",
+                    menubarPath: "davinci.edit/cut"
+                },
+                {
+                    iconClass: "editActionIcon unselectAllIconSmall",
+                    label: "Unselect all",
+                    action: "davinci/ve/actions/UnselectAllAction",
+                    menubarPath: "davinci.edit/cut"
+                },
+                {
                     iconClass: "editActionIcon",
                     label: "Surround with &lt;A&gt;",
                     action: "davinci/ve/actions/SurroundAction",
+                    surroundWithTagName:'a',
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.surround.div",
                     iconClass: "editActionIcon",
                     label: "Surround with &lt;DIV&gt;",
                     action: "davinci/ve/actions/SurroundAction",
+                    surroundWithTagName:'div',
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.surround.span",
                     iconClass: "editActionIcon",
                     label: "Surround with &lt;SPAN&gt;",
                     action: "davinci/ve/actions/SurroundAction",
+                    surroundWithTagName:'span',
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.addTableColumn",
-                    iconClass: "editActionIcon",
-                    label: "Insert column after",
-                    action: "davinci/ve/actions/AddColumnAction",
+                    iconClass: "editActionIcon moveToFrontIconSmall",
+                    label: "Move to front",
+                    action: "davinci/ve/actions/MoveToFrontAction",
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.addTableColumnBefore",
-                    iconClass: "editActionIcon",
-                    label: "Insert column before",
-                    action: "davinci/ve/actions/AddColumnBeforeAction",
+                    iconClass: "editActionIcon moveForwardIconSmall",
+                    label: "Move forward",
+                    action: "davinci/ve/actions/MoveForwardAction",
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.removeTableColumn",
-                    iconClass: "editActionIcon",
-                    label: "Remove column",
-                    action: "davinci/ve/actions/RemoveColumnAction",
+                    iconClass: "editActionIcon moveBackwardIconSmall",
+                    label: "Move backward",
+                    action: "davinci/ve/actions/MoveBackwardAction",
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.addTableRow",
-                    iconClass: "editActionIcon",
-                    label: "Insert row after",
-                    action: "davinci/ve/actions/AddRowAction",
+                    iconClass: "editActionIcon moveToBackIconSmall",
+                    label: "Move to back",
+                    action: "davinci/ve/actions/MoveToBackAction",
                     menubarPath: "davinci.edit/cut"
                 },
                 {
-                    id: "davinci.ve.addTableRowBefore",
+                iconClass: "editActionIcon",
+                label: "Manage States...",
+                action: "davinci/ve/actions/ManageStates",
+                menubarPath: "davinci.edit/cut"
+            	}/*,
+                {
                     iconClass: "editActionIcon",
-                    label: "Insert row before",
-                    action: "davinci/ve/actions/AddRowBeforeAction",
+                    label: "Application States...",
+                    action: "davinci/ve/actions/EnableApplicationStates",
                     menubarPath: "davinci.edit/cut"
-                },
-                {
-                    id: "davinci.ve.removeTableRow",
-                    iconClass: "editActionIcon",
-                    label: "Remove row",
-                    action: "davinci/ve/actions/RemoveRowAction",
-                    menubarPath: "davinci.edit/cut"
-                }
-            ]
-        },
-        {
-            id: "datastoreActions",
-            visible: true,
-            actions: [
-                {
-                    id: "davinci.ui.generateform",
-                    label: "Generate Form",
-                    run: function(){
-                    	require("davinci/ve/views/DataStoresView").generateForm();
-                    },
-                    menubarPath: "newfile"
-                },
-                {
-                    id: "davinci.ui.generateform",
-                    label: "Generate Table",
-                    run: function(){
-                    	require("davinci/ve/views/DataStoresView").generateTable();
-                    },
-                    menubarPath: "newfile"
-                }
-            ]
-        },
-        {
-            id: "stateActions",
-            visible: true,
-            actions: [
-                {
-                    id: "davinci.ve.addTableColumn",
-                    iconClass: "editActionIcon",
-                    label: "Insert column after",
-                    action: "davinci/ve/actions/AddColumnAction",
-                    menubarPath: "state"
-                },
-                {
-                    id: "davinci.ve.addTableColumnBefore",
-                    iconClass: "editActionIcon",
-                    label: "Insert column before",
-                    action: "davinci/ve/actions/AddColumnBeforeAction",
-                    menubarPath: "state"
-                },
-                {
-                    id: "davinci.ve.removeTableColumn",
-                    iconClass: "editActionIcon",
-                    label: "Remove column",
-                    action: "davinci/ve/actions/RemoveColumnAction",
-                    menubarPath: "state"
-                },
-                {
-                    id: "davinci.ve.addTableRow",
-                    iconClass: "editActionIcon",
-                    label: "Insert row after",
-                    action: "davinci/ve/actions/AddRowAction",
-                    menubarPath: "state"
-                },
-                {
-                    id: "davinci.ve.addTableRowBefore",
-                    iconClass: "editActionIcon",
-                    label: "Insert row before",
-                    action: "davinci/ve/actions/AddRowBeforeAction",
-                    menubarPath: "state"
-                },
-                {
-                    id: "davinci.ve.removeTableRow",
-                    iconClass: "editActionIcon",
-                    label: "Remove row",
-                    action: "davinci/ve/actions/RemoveRowAction",
-                    menubarPath: "state"
-                },
-                {
-                    id: "davinci.ve.addstate",
-                    icon: null,
-                    label: "Add state",
-                    action: "davinci/ve/actions/AddState",
-                    menubarPath: "state"
-                },
-                {
-                    id: "davinci.ve.removestate",
-                    icon: null,
-                    label: "Remove state",
-                    action: "davinci/ve/actions/RemoveState",
-                    menubarPath: "state"
-                }
+                }*/
             ]
         }
     ],
@@ -330,17 +233,46 @@ return {
 						id: "addState",
 						iconClass: 'viewActionIcon addStateIcon',
 						action: "davinci/ve/actions/AddState",
-						label: "Add State",
-						// menubarPath: "davinci.edit/cut",
-						toolbarPath: "add"
+						label: "Add state",
+						toolbarPath: "states1"
 					},
 					{
 						id: "removeState",
 						iconClass: 'viewActionIcon removeStateIcon',
 						action: "davinci/ve/actions/RemoveState",
-						label: "Remove State",
-						// menubarPath: "davinci.edit/cut",
-						toolbarPath: "remove"
+						label: "Remove state",
+						toolbarPath: "states1"
+					},
+					{
+						id: "modifyState",
+						iconClass: 'viewActionIcon modifyStateIcon',
+						action: "davinci/ve/actions/ModifyState",
+						label: "Modify state",
+						toolbarPath: "states1"
+					},
+					{
+						id: "manageStates",
+						className: "manageStatesButton",
+						iconClass: 'viewActionIcon manageStatesIcon',
+						action: "davinci/ve/actions/ManageStates",
+						label: "For currently selected widgets, manage widget visibility for different states",
+						toolbarPath: "states1"
+					},
+					{
+						id: "NewWidgetsCurrentState",
+						className: "newWidgetsCurrentStateButton",
+						iconClass: 'viewActionIcon newWidgetsCurrentStateIcon',
+						action: "davinci/ve/actions/NewWidgetsCurrentState",
+						label: "Toggle whether new widgets go to Background or current state",
+						toolbarPath: "states2"
+					},
+					{
+						id: "highlightBaseWidgets",
+						className: "highlightBaseWidgetsButton",
+						iconClass: 'viewActionIcon highlightBaseWidgetsIcon',
+						action: "davinci/ve/actions/HighlightBaseWidgets",
+						label: "When in custom state, highlight widgets from Background state",
+						toolbarPath: "states2"
 					}
 
                 ]
@@ -360,55 +292,113 @@ return {
         editorContribution: {
             targetID: "davinci.ve.HTMLPageEditor",
             actions: [
-                {
-                    id: "cut",
-                    label: "Cut",
-                    keySequence: "M1+X",
-                    iconClass: "editActionIcon editCutIcon",
-                    action: "davinci/ve/actions/CutAction",
-                    toolbarPath: "cutcopypaste"
-                },
-                {
-                    id: "copy",
-                    label: "Copy",
-                    keySequence: "M1+C",
-                    iconClass: "editActionIcon editCopyIcon",
-                    action: "davinci/ve/actions/CopyAction",
-                    toolbarPath: "cutcopypaste"
-                },
-                {
-                    id: "paste",
-                    keySequence: "M1+V",
-                    iconClass: "editActionIcon editPasteIcon",
-                    label: "Paste",
-                    action: "davinci/ve/actions/PasteAction",
-                    toolbarPath: "cutcopypaste"
-                },
-                {
-                    id: "undo",
-                    iconClass: 'undoIcon',
+              {
+                  id: "savecombo",
+                  className: "maqLabelButton",
+                  showLabel: true,
+                  label: "Save",
+                  toolbarPath: "save",
+                  type:'ComboButton',
+                  run: function() {
+                      require(['../Workbench'], function(workbench) {
+                      		require("../ui/Resource").save();
+                      });
+                  },
+                  isEnabled: function(context) {
+                      return require('../Workbench').getOpenEditor();
+                  },
+                  menu:[
+                     {
+                          iconClass: 'saveIcon',
+                          run: function() {
+                          		require("../ui/Resource").save();
+                          },
+                          isEnabled: function(context) {
+                              return require('../Workbench').getOpenEditor();
+                          },
+                          label: "Save",
+                  		keyBinding: {accel: true, charOrCode: "s", allowGlobal: true}
+                      },
+                      {
+                          iconClass: 'saveAsIcon',
+                          run: function() {
+                              require("../ui/Resource").saveAs('html');
+                          },
+                          isEnabled: function(context) {
+                              return require('../Workbench').getOpenEditor();
+                          },
+                          label: "Save As",
+                  		keyBinding: {accel: true, shift: true, charOrCode: "s", allowGlobal: true}
+                      },
+                      {
+                          id: "saveasdijit",
+                          iconClass: 'saveAsDijitIcon',
+                          run: function(){
+                              return require(['davinci/de/resource'], function(r){
+                                	r.createDijiFromNewDialog();
+                              })
+                          },
+                          isEnabled: function(context) {
+                              return require('../Workbench').getOpenEditor();
+                           },
+                           label: "Save As Widget"
+                       },
+                  ]
+              },
+  				{
+                	id: "undo",
+                    iconClass: 'editActionIcon undoIcon',
                     action: "davinci/actions/UndoAction",
                     label: "Undo",
-                    toolbarPath: "undoredo"
+                    //showLabel: true,
+                    toolbarPath: "undoredo",
+                    keyBinding: {accel: true, charOrCode: "z"}
                 },
                 {
                     id: "redo",
-                    iconClass: 'redoIcon',
+                    iconClass: 'editActionIcon redoIcon',
                     action: "davinci/actions/RedoAction",
+                    //showLabel: true,
                     label: "Redo",
-                    toolbarPath: "undoredo"
+                    toolbarPath: "undoredo",
+                    keyBinding: {accel: true, shift: true, charOrCode: "z"}
                 },
+				{
+				    id: "cut",
+				    label: "Cut",
+				    iconClass: "editActionIcon editCutIcon",
+				    action: "davinci/ve/actions/CutAction",
+				    toolbarPath: "cutcopypaste",
+				    keyBinding: {accel: true, charOrCode: "x"}
+				
+				},
+				{
+				    id: "copy",
+				    label: "Copy",
+				    iconClass: "editActionIcon editCopyIcon",
+				    action: "davinci/ve/actions/CopyAction",
+				    toolbarPath: "cutcopypaste",
+				    keyBinding: {accel: true, charOrCode: "c"}
+				},
                 {
+                    label: "Paste",
+                    iconClass: "editActionIcon editPasteIcon",
+                    action: "davinci/ve/actions/PasteAction",
+                    toolbarPath: "cutcopypaste",
+                    keyBinding: {accel: true, charOrCode: "v"}
+                },
+				{
                     id: "delete",
-                    keySequence: "DEL",
                     iconClass: "editActionIcon editDeleteIcon",
                     label: "Delete",
                     action: "davinci/ve/actions/DeleteAction",
-                    toolbarPath: "delete"
+                    toolbarPath: "delete",
+                    keyBinding: {charOrCode: [dojo.keys.DELETE, dojo.keys.BACKSPACE]}
                 },
                 {
                     id: "openBrowser",
                     iconClass: 'openBrowserIcon',
+                    className: 'davinciFloatRight openBrowser',
                     run: function() {
                         require(['../Workbench'], function(workbench) {
                             var editor = workbench.getOpenEditor();
@@ -420,74 +410,103 @@ return {
                         });
                     },
                     label: "Preview in Browser",
-                    toolbarPath: "preview"
+                    toolbarPath: "undoredo",
+                    keyBinding: {accel: true, charOrCode: "0", allowGlobal: true}
                 },
                 {
-                    id: "save",
-                    iconClass: 'saveIcon',
-                    run: function() {
-                        require(['../Workbench'], function(workbench) {
-                            workbench.getOpenEditor().save();
-                        });
-                    },
-                    isEnabled: function(context) {
-                        return require('../Workbench').getOpenEditor();
-                    },
-                    label: "Save",
-                    toolbarPath: "save"
-                },
-                {
-                    id: "saveas",
-                    iconClass: 'saveAsIcon',
-                    run: function() {
-                    	require("../ui/Resource").saveAs('html');
-                    },
-                    isEnabled: function(context) {
-                        return require('../Workbench').getOpenEditor();
-                    },
-                    label: "Save As",
-                    toolbarPath: "save"
-                },
-                // commenting out the 'save as widget' feature.
-                //{
-                //   id: "saveasdijit",
-                //    iconClass: 'saveAsWidgetIcon',
-                //    run: function(){
-                //        davinci.de.resource.createDijiFromNewDialog();
-                //    }
-                //    isEnabled: function(context) {
-                //        var isEnabled = davinci.Workbench.getOpenEditor();
-                //        return isEnabled;
-
-                //},
-                //    label: "Save As Widget",
-                //    toolbarPath: "save"
-                //},
-                // {
-                // id: "saveaswidget",
-                // iconClass: 'saveAsIcon', // XXX
-                // action: "davinci/actions/SaveAsWidget",
-                // isEnabled : function(context){
-                // var isEnabled = davinci.Workbench.getOpenEditor();
-                // return isEnabled;
-                //                    
-                // },
-                // label: "Save As Widget",
-                // toolbarPath: "save"
-                // },
-                {
-                    id: "theme",
-                    iconClass: 'selectThemeIcon',
-                    action: "davinci/actions/SelectThemeAction",
-                    label: "Switch theme",
-                    toolbarPath: "theme"
-                },
-                {
-                    id: "layout",
-                    iconClass: 'selectLayoutIcon',
-                    action: "davinci/actions/SelectLayoutAction",
-                    label: "Switch layout",
-                    toolbarPath: "layout"
+                    id: "documentSettings",
+                    iconClass: 'documentSettingsIcon',
+                    className: 'documentSettings davinciFloatRight',
+                    label: "Document settings",
+                    toolbarPath: "undoredo",
+                    type:'DropDownButton',
+                    menu:[
+                       {
+                           id: "theme",
+                           iconClass: 'selectThemeIcon',
+                           className: "davinciFloatRight",
+                           action: "davinci/actions/SelectThemeAction",
+                           label: "Switch theme"
+                        },
+                       {
+                           id: "chooseDevice",
+                           iconClass: 'deviceIcon',
+                           className: "davinciFloatRight",
+                           action: "davinci/ve/actions/ChooseDeviceAction",
+                           label: "Choose device"
+                       },
+                       {
+                           id: "rotateDevice",
+                           iconClass: 'rotateIcon',
+                           className: "davinciFloatRight",
+                           action: "davinci/ve/actions/RotateDeviceAction",
+                           label: "Rotate device"
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Select parent",
+                           action: "davinci/ve/actions/SelectParentAction"
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Select ancestor...",
+                           action: "davinci/ve/actions/SelectAncestorAction"
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Unselect all",
+                           action: "davinci/ve/actions/UnselectAllAction"
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Move to front",
+                           action: "davinci/ve/actions/MoveToFrontAction"
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Move forward",
+                           action: "davinci/ve/actions/MoveForwardAction"
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Move backward",
+                           action: "davinci/ve/actions/MoveBackwardAction"
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Move to back",
+                           action: "davinci/ve/actions/MoveToBackAction"
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Surround with &lt;A&gt;",
+                           action: "davinci/ve/actions/SurroundAction",
+                           surroundWithTagName:'a'
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Surround with &lt;DIV&gt;",
+                           action: "davinci/ve/actions/SurroundAction",
+                           surroundWithTagName:'div'
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Surround with &lt;SPAN&gt;",
+                           action: "davinci/ve/actions/SurroundAction",
+                           surroundWithTagName:'span'
+                       },
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Manage States...",
+                           action: "davinci/ve/actions/ManageStates",
+                           menubarPath: "davinci.edit/cut"
+                       	}/*,
+                       {
+                           iconClass: "editActionIcon",
+                           label: "Application States...",
+                           action: "davinci/ve/actions/EnableApplicationStates"
+                       }*/
+                    ]
                 },
                 {
                     id: "stickynote",
@@ -497,51 +516,86 @@ return {
                     toolbarPath: "stickynote"
                 },
                 {
-                    id: "chooseDevice",
-                    iconClass: 'deviceIcon',
-                    action: "davinci/ve/actions/ChooseDeviceAction",
-                    label: "Choose device",
-                    toolbarPath: "chooseDevice"
-                },
+                    id: "layout",
+                    className: "maqLabelButton davinciFloatRight maqLayoutDropDownButton",
+                    showLabel: true,
+                    label: "Flow",	// will be updated by code
+                    toolbarPath: "undoredo",
+                    type:'DropDownButton',
+                    menu:[
+                        {
+                            label: "Flow",
+                            iconClass: "flowLayoutIcon",
+                            method: "selectLayoutFlow"
+                        },
+                        {
+                            label: "Absolute",
+                            iconClass: "absoluteLayoutIcon",
+                            method: "selectLayoutAbsolute"
+                        }
+                   ]
+                 },
                 {
-                    id: "rotateDevice",
-                    iconClass: 'rotateIcon',
-                    action: "davinci/ve/actions/RotateDeviceAction",
-                    label: "Rotate device",
-                    toolbarPath: "rotateDevice"
+                    id: "sourcecombo",
+                    className: "maqLabelButton davinciFloatRight maqSourceComboButton",
+                    showLabel: true,
+                    label: "Source",
+                    action: "davinci/ve/actions/ViewSourceAction",
+                    toolbarPath: "undoredo",
+                    type:'ComboButton',
+                    menu:[
+                       {
+                            keyBinding: {accel: true, charOrCode: "2", allowGlobal: true},
+                            iconClass: 'editActionIcon sourceModeIcon sourceMenuIcon',
+                            action: "davinci/ve/actions/ViewSourceMenuAction",
+                            label: "Source only"
+                        },
+                        {
+                            keyBinding: {accel: true, charOrCode: "3", allowGlobal: true},
+                            iconClass: 'editActionIcon splitVerticalIcon sourceMenuIcon',
+                            action: "davinci/ve/actions/ViewSplitVMenuAction",
+                            label: "Split Vertically"
+                        },
+                        {
+                            keyBinding: {accel: true, charOrCode: "4", allowGlobal: true},
+                            iconClass: 'editActionIcon splitHorizontalIcon sourceMenuIcon',
+                            action: "davinci/ve/actions/ViewSplitHMenuAction",
+                            label: "Split Horizontally"
+                        }
+                    ]
                 },
                 {
                     id: "design",
-                    iconClass: 'designModeIcon editActionIcon',
-                    radioGroup: "displayMode",
-                    method: "switchDisplayMode",
-                    // initialValue : true,
-                    label: "Display Design",
-                    toolbarPath: "displayMode"
+                    //iconClass: 'designModeIcon editActionIcon',
+                    showLabel: true,
+                    className: 'maqLabelButton davinciFloatRight maqDesignButton',
+                    action: "davinci/ve/actions/ViewDesignAction",
+                    label: "Design",
+                    toolbarPath: "undoredo",
+                    keyBinding: {accel: true, charOrCode: "1", allowGlobal: true}
                 },
                 {
-                    id: "source",
-                    iconClass: 'sourceModeIcon editActionIcon',
-                    method: "switchDisplayMode",
-                    radioGroup: "displayMode",
-                    label: "Display Source",
-                    toolbarPath: "displayMode"
+                    id: "closeactiveeditor",
+                    run: function() {
+                        require(['../Workbench'], function(workbench) {
+                            workbench.closeActiveEditor();
+                        });
+                    },
+                    keyBinding: {accel: true, shift: true, charOrCode: "w", allowGlobal: true}
                 },
                 {
-                    id: "splitVertical",
-                    iconClass: 'splitVerticalIcon editActionIcon',
-                    method: "switchDisplayMode",
-                    radioGroup: "displayMode",
-                    label: "Split Vertically",
-                    toolbarPath: "displayMode"
-                },
-                {
-                    id: "splitHorizontal",
-                    iconClass: 'splitHorizontalIcon editActionIcon',
-                    method: "switchDisplayMode",
-                    radioGroup: "displayMode",
-                    label: "Split Horizontally",
-                    toolbarPath: "displayMode"
+                    id: "showWidgetsPalette",
+                    run: function() {
+                    	var tab = dijit.byId("davinci.ve.Palette");
+                    	if (tab) {
+                    		var tabContainer = tab.getParent();
+                    		// Select tab
+                    		if (tabContainer) {
+                    			tabContainer.selectChild(tab);
+                    		}
+                    	} 
+                    },
+                    keyBinding: {meta: true, charOrCode: "p", allowGlobal: true}
                 }
             ]
         }
@@ -557,7 +611,8 @@ return {
                 "snap": true,
 				"showPossibleParents": false,
                 "cssOverrideWarn": true,
-                "absoluteWidgetsZindex": 9999
+                "absoluteWidgetsZindex": 900,
+                "widgetPaletteLayout": "icons"
             }
         }
     ],
@@ -580,7 +635,45 @@ return {
             iconClass: "themeFileIcon",
             type: "text"
         }
-    ]
+    ],
+    "davinci.defaultEditorActions": {
+			editorContribution: {
+				actions: [
+					{
+						id: "save",
+						run: function() {
+							require('../Workbench').getOpenEditor().save();
+						},
+						isEnabled: function(context) {
+							return true;
+						},
+		                className: "maqLabelButton",
+		                showLabel: true,
+						label: "Save",
+						toolbarPath: "save",
+						keyBinding: {accel: true, charOrCode: "s"}
+					},
+					{
+						id: "undo",
+					    iconClass: 'editActionIcon undoIcon',
+					    action: "davinci/actions/UndoAction",
+					    label: "Undo",
+					    //showLabel: true,
+					    toolbarPath: "undoredo",
+					    keyBinding: {accel: true, charOrCode: "z"}
+					},
+					{
+					    id: "redo",
+					    iconClass: 'editActionIcon redoIcon',
+					    action: "davinci/actions/RedoAction",
+					    //showLabel: true,
+					    label: "Redo",
+					    toolbarPath: "undoredo",
+					    keyBinding: {accel: true, shift: true, charOrCode: "z"}
+					}
+				]
+			}
+		}
 };
 
 });

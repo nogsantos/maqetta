@@ -1,8 +1,9 @@
 define([
     "dojo/_base/declare",
-	"davinci/workbench/_ToolbaredContainer",
-	"davinci/ve/States"
-], function(declare, ToolbaredContainer, States) {
+	"./_ToolbaredContainer",
+	"../ve/States",
+	"../Runtime"
+], function(declare, ToolbaredContainer, States, Runtime) {
 
 return declare("davinci.workbench.ViewPart", ToolbaredContainer, {
 		
@@ -22,9 +23,7 @@ return declare("davinci.workbench.ViewPart", ToolbaredContainer, {
 	},
 
 	subscribe: function(topic,func) {
-		var isStatesSubscription = topic.indexOf("/davinci/states") == 0;
-		var subscription = isStatesSubscription ? davinci.states.subscribe(topic,this,func) : dojo.subscribe(topic,this,func);
-		this.subscriptions.push(subscription);
+		this.subscriptions.push(dojo.subscribe(topic,this,func));
 	},
 
 	publish: function (topic,data) {
@@ -38,23 +37,15 @@ return declare("davinci.workbench.ViewPart", ToolbaredContainer, {
 	},
 
 	destroy: function() {
-		dojo.forEach(this.subscriptions, function(item) {
-			var topic = item[0];
-			var isStatesSubscription = topic.indexOf("/davinci/states") == 0;
-			if (isStatesSubscription) {
-				davinci.states.unsubscribe(item);
-			} else {
-				dojo.unsubscribe(item);
-			}
-		});
+		dojo.forEach(this.subscriptions, dojo.unsubscribe);
 		delete this.subscriptions;
 	},
 	
 	_getViewActions: function() {
 		var viewID=this.toolbarID || this.viewExt.id;
-		var viewActions=[];
-		var extensions = davinci.Runtime.getExtensions('davinci.viewActions', function(ext){
-			if (viewID==ext.viewContribution.targetID) {
+		var viewActions = [];
+		Runtime.getExtensions('davinci.viewActions', function(ext){
+			if (viewID == ext.viewContribution.targetID) {
 				viewActions.push(ext.viewContribution);
 				return true;
 			}

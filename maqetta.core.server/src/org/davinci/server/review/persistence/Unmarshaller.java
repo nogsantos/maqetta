@@ -1,9 +1,5 @@
 package org.davinci.server.review.persistence;
 
-import java.io.File;
-
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.text.ParseException;
@@ -25,12 +21,12 @@ import javax.xml.transform.TransformerFactoryConfigurationError;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
-import org.davinci.server.user.IDavinciProject;
-
 import org.davinci.server.review.Comment;
 import org.davinci.server.review.CommentFlag;
 import org.davinci.server.review.CommentsDocument;
 import org.davinci.server.review.Constants;
+import org.davinci.server.user.IDavinciProject;
+import org.maqetta.server.IStorage;
 import org.w3c.dom.DOMException;
 import org.w3c.dom.Document;
 import org.w3c.dom.NamedNodeMap;
@@ -45,13 +41,11 @@ import org.xml.sax.SAXException;
  */
 public class Unmarshaller {
 	public CommentsDocument unmarshall(IDavinciProject project) {
-		String path = project.getCommentFilePath();
 		CommentsDocument commentsDoc = new CommentsDocument(project);
-
 		try {
-			File f = new File(path);
+			IStorage file = project.getCommentsFileStorage();
 
-			Document document = initCommentsFile(f);
+			Document document = initCommentsFile(file);
 			Node node = document.getFirstChild();
 			NodeList children = node.getChildNodes();
 			Comment comm;
@@ -67,7 +61,26 @@ public class Unmarshaller {
 					}
 				}
 			}
-		} catch (Exception e) {
+		} catch (SAXException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (DOMException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (ParseException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (TransformerFactoryConfigurationError e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (TransformerException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (ParserConfigurationException e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		return commentsDoc;
@@ -91,8 +104,12 @@ public class Unmarshaller {
 			if (node.getNodeType() == Node.ELEMENT_NODE) {
 				if (Comment.PAGE_STATE.equalsIgnoreCase(node.getNodeName()))
 					comment.setPageState(getValue(node));
+				else if (Comment.PAGE_STATE_LIST.equalsIgnoreCase(node.getNodeName()))
+					comment.setPageStateList(getValue(node));
 				else if (Comment.VIEW_SCENE.equalsIgnoreCase(node.getNodeName()))
 					comment.setViewScene(getValue(node));
+				else if (Comment.VIEW_SCENE_LIST.equalsIgnoreCase(node.getNodeName()))
+					comment.setViewSceneList(getValue(node));
 				else if (Comment.PAGE_NAME.equalsIgnoreCase(node.getNodeName()))
 					comment.setPageName(getValue(node));
 				else if (Comment.SUBJECT.equalsIgnoreCase(node.getNodeName()))
@@ -102,13 +119,6 @@ public class Unmarshaller {
 				else if (Comment.DRAWING_JSON.equalsIgnoreCase(node
 						.getNodeName())) {
 					comment.setDrawingJson(getValue(node));
-				} else if (Comment.SEVERITY
-						.equalsIgnoreCase(node.getNodeName())) {
-					comment.setSeverity(getValue(node));
-				} else if (Comment.TYPE.equalsIgnoreCase(node.getNodeName())) {
-					comment.setType(getValue(node));
-				} else if (Comment.STATUS.equalsIgnoreCase(node.getNodeName())) {
-					comment.setStatus(getValue(node));
 				} else if (Comment.CREATED.equalsIgnoreCase(node.getNodeName()))
 					comment.setCreated(sdf.parse(getValue(node)));
 				else if (Comment.ID.equalsIgnoreCase(node.getNodeName()))
@@ -199,12 +209,12 @@ public class Unmarshaller {
 	 * @throws ParserConfigurationException
 	 * @throws SAXException
 	 */
-	public static Document initCommentsFile(File commentFile)
+	public static Document initCommentsFile(IStorage commentFile)
 			throws IOException, TransformerFactoryConfigurationError,
 			TransformerException, ParserConfigurationException, SAXException {
 		if (null == commentFile)
 			return null;
-		File parent = commentFile.getParentFile();
+		IStorage parent = commentFile.getParentFile();
 		DocumentBuilderFactory builderFactory = DocumentBuilderFactory
 				.newInstance();
 		DocumentBuilder builder = builderFactory.newDocumentBuilder();
@@ -216,7 +226,7 @@ public class Unmarshaller {
 			commentFile.createNewFile();
 		} else {
 			// If exist, parse it.
-			return builder.parse(new FileInputStream(commentFile));
+			return builder.parse(commentFile.getInputStream());
 		}
 
 		OutputStream os = null;
@@ -233,13 +243,14 @@ public class Unmarshaller {
 			Result result = null;
 			Transformer xformer = TransformerFactory.newInstance()
 					.newTransformer();
-			os = new FileOutputStream(commentFile);
+			os = commentFile.getOutputStream();
 			result = new StreamResult(os);
 			xformer.transform(source, result);
 			return document;
 		} finally {
-			if (null != os)
+			if (null != os) {
 				os.close();
+			}
 		}
 	}
 }

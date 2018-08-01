@@ -34,24 +34,46 @@ davinci/davinci = {
 	"./actions/DownloadAction",
 	"./actions/StickyNoteAction",
 	"./actions/SaveAsWidget",
+	"./actions/UserNameAction",
+	"./actions/LogoutAction",
 
 	"./ve/actions/CopyAction",
 	"./ve/actions/CutAction",
 	"./ve/actions/DeleteAction",
 	"./ve/actions/PasteAction",
+	"./ve/actions/DuplicateAction",
+	"./ve/actions/EditValueAction",
+	"./ve/actions/EditPropertiesAction",
 	"./ve/actions/ChooseDeviceAction",
 	"./ve/actions/RotateDeviceAction",
 	"./ve/actions/SurroundAction",
 
-	"./ve/actions/AddColumnAction",
-	"./ve/actions/AddColumnBeforeAction",
-	"./ve/actions/RemoveColumnAction",
-	"./ve/actions/AddRowAction",
-	"./ve/actions/AddRowBeforeAction",
-	"./ve/actions/RemoveRowAction",
+	"./ve/actions/SelectParentAction",
+	"./ve/actions/SelectAncestorAction",
+	"./ve/actions/UnselectAllAction",
+	
+	"./ve/actions/ArrangeAction",
+	"./ve/actions/MoveToFrontAction",
+	"./ve/actions/MoveToBackAction",
+	"./ve/actions/MoveForwardAction",
+	"./ve/actions/MoveBackwardAction",
+
+	"./ve/actions/OtherAction",
+	"./ve/actions/EnableApplicationStates",
+
+	"./ve/actions/ViewDesignAction",
+	"./ve/actions/ViewSourceAction",
+	"./ve/actions/ViewSourceMenuAction",
+	"./ve/actions/ViewSplitHMenuAction",
+	"./ve/actions/ViewSplitVMenuAction",
+
 	"./ve/actions/AddState",
 	"./ve/actions/RemoveState",
-
+	"./ve/actions/ModifyState",
+	"./ve/actions/ManageStates",
+	"./ve/actions/NewWidgetsCurrentState",
+	"./ve/actions/HighlightBaseWidgets",
+	
 	// editorClasses
 	"./ve/PageEditor",
 	"./html/ui/CSSEditor",

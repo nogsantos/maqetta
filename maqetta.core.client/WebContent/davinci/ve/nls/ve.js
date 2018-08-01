@@ -2,31 +2,69 @@ define({ root:
 {
 		//SwitchingStyleView.js
 		"common":"Common",
-		"widgetSpecific":"Widget-specific",
+		"widgetSpecific":"Widget",
 		"events":"Events",
 		"layout":"Layout",
 		"showMinMax":"show min/max",
-		"paddingMargins":"Padding/Margins",
+		"padding":"Padding",
+		"margins":"Margins",
 		"showtrbl":"show t/r/b/l",
 		"background":"Background",
 		"border":"Border",
 		"showDetails":"show details",
-		"fontsAndText":"Fonts and Text",
-		"shapesSVG":"Graphics/SVG",
+		"fontsAndText":"Fonts/Text",
+		"shapesSVG":"SVG",
+		"properties":"properties",
 		
 		//StatesView.js
 		"Scenes":"Scenes",
 		"States":"States",
+		"ActiveScene":"This scene is currently visible",
+		"AppStateFocus":"This application state is the target for application-state-specific visibility or styling changes",
+		"InitialScene":"This scene will show initially when the page runs",
 		
 		//DeviceActions.js
 		"chooseDeviceSilhouette":"Choose a device silhouette: ",
+		"filesHasUnsavedChanges":"The file '${0}' has unsaved changes, \"Save\" changes and continue with switch device silhouette.",
 		
-		//actions/StateActions.js
+		//SelectAncestorAction.js
+		"selectAncestorTitle":"Select ancestor",
+		"selectAncestorLabel":"Select ancestor (closest ancestor listed first):",
+		
+		//actions/AddState.js, ManageStates.js, ModifyState.js, RenameState.js, StateContainer.js
 		"createNewState":"Create New State",
+		"updateCurrentState":"Update Current State",
 		"createLabel":"Create",
-		"stateLabel":"State",
+		"updateLabel":"Update",
+		"modifyState":"Modify State",
+		"modifyLabel":"Update",
+		"stateLabel":"Name",
 		"enterStateName":"Please enter a state name.",
 		"stateNameExists":"State name '${name}' already exists. Please enter a different state name.",
+		"renameState":"Rename State",
+		"renameLabel":"Rename",
+		"cancelLabel":"Cancel",
+		"newStateLabel":"New name:",
+		"manageStates":"Manage Widget Visibility for Different States",
+		"manageStatesCheckLabel":"Check:",
+		"manageStatesCheckCurrentStateOnly":"Current state",
+		"manageStatesCheckAll":"All",
+		"manageStatesUncheckAll":"None",
+		"manageStatesCheckBackgroundOnly":"Background only",
+		"manageStatesAllVisibleFromBackground":"(Visible from Background)",
+		"manageStatesSomeVisibleFromBackground":"(Some visible from Background)",
+		"manageStatesSomeVisibleSomeHidden":"(Some visible, some hidden)",
+		"initialStateCheckBoxLabel":"Initial state at document load time",
+		"EnableApplicationStates":"Enable/disable application states",
+		"EnableAsStateContainerDescription":"Setting the check box below and clicking OK will allow custom application states to be defined on the currently selected widget.",
+		"DisableAsStateContainerDescription":"Unsetting the check box below and clicking OK will disallow custom application states on the currently selected widget.",
+		"DisableAsStateContainerDataLoss":"Any existing interactivity based on existing application states will be lost.",
+		"EnableAsStateContainerWidgetLabel":"Application states are enabled on this widget",
+		"EnableApplicationStatesCurrentWidget":"Currently selected widget",
+		"EnableApplicationStatesCurrentStates":"Current application states",
+		"EnableApplicationStatesNone":"(none)",
+		"NewWidgetsCurrentStateTitleBackground":"Toggle whether new widgets go to Background or selected state (current value: Background)",
+		"NewWidgetsCurrentStateTitleCurrentState":"Toggle whether new widgets go to Background or selected state (current value: selected state)",
 		
 		//input/RichTextInput.js
 		"richTextInputHelp":"Provides Rich Text (word processor-like) editing of HTML.",
@@ -49,6 +87,7 @@ define({ root:
 		"applyToWhich":"Apply to which style rule:",
 		"onlyApplyToState":" Only apply to current state (${0})",
 		"newRule":"[class: ${0} - New rule in ${1}] ",
+		"newThemeRule":"[theme: - New rule in ${0}] ",
 		"existingRule":"[class: ${0} - Existing rule in ${1}] ",
 		"line":" line: ${0})",
 		"propUndefined":"undefined",
@@ -67,6 +106,25 @@ define({ root:
 		"bgdStop":"Stop",
 		"bgdAddStop":"Add a new gradient stop after this stop",
 		"bgdRemoveStop":"Remove this gradient stop",
+		"bgdBackgroundColor": "background-color:",
+		"bgdBackgroundImageType": "background-image type:",
+		"bgdImageUrl": "Image URL:",
+		"bgdUrl": "URL:",
+		"bgdColorStops": "Color stops:",
+		"bgdColor": "color",
+		"bgdPosition": "position",
+		"bgdOptions": "Options:",
+		"bgdAngle": "Angle:",
+		"bgdPosition2": "Position:",
+		"bgdShape": "Shape:",
+		"bgdExtent": "Extent:",
+		"bgdBackgroundRepeat": "background-repeat:",
+		"bgdBackgroundPosition": "background-position:",
+		"bgdBackgroundSize": "background-size:",
+		"bgdBackgroundOrigin": "background-origin:",
+		"bgdBackgroundClip": "background-clip:",
+		"bgdBackgroundImageValue": "'background-image' value:",
+		"bgdTemplate": "Template:",
 		
 		//widgets/ColorPicker.js
 		"colorPicker":"Color picker...",
@@ -76,12 +134,33 @@ define({ root:
 		//widgets/WidgetToolBar.js
 		"toolBarFor":"for: ",
 		"noSelection":"(no selection)",
-		"toolBarClass":"class: ",
+		"toolBarClass":"class:",
+		"toolBarId":"ID:",
+		"idAlreadyUsed": "This id is already used by another widget",
 		
 		//tools/CreateTool.js
 		"noValidParents":"No valid parents at this position",
 		"willBeChildOf":"Will become a child of:",
 		"candidateParents":"Candidate parents:",
-		"toChangePress":"To change, press numbers"
+		"toChangePress":"To change, press numbers",
+
+		//VisualThemeEditor.js
+		"vteWarningTitle": "Theme Version Warning",
+		"vteWarningMessage": "Theme version does not match Maqetta version this could produce unexpected results. We suggest recreating the custom theme using the current version of Maqetta and deleting the existing theme.",
+		"vteWarningUnsuportedBrowserTitle": "Unsupported brower",
+		"vteWarningUnsuportedBrowserMessage": "Editing mobile themes is only supported on webkit browsers, we sugguest using Chrome or Safari to customize mobile themes.",
+		"vteWarningToolkitMessage": "Theme version does not match workspace library version this could produce unexpected results. We suggest recreating the custom theme using the current version of Maqetta and deleting the existing theme.",
+		"vteErrorTitle": "Theme Version Error",
+		"vteErrorMessage": "Theme version is not supported by this version of Maqetta. You must recreating custom theme using the current version of Maqetta and deleting the existing theme..",
+		//PageEditor/ThemeEditor.js
+		"vteErrorSavingResourceMessage": "error saving resource\n",
+		//ve.plugin.js
+		//Labels for ComboButton for source vs split-h vs split-v
+		"SourceComboButton-source":"Source",
+		"SourceComboButton-splitHorizontal":"Split-H",
+		"SourceComboButton-splitVertical":"Split-V",
+		// Labels for DropdownButton for flow vs absolute
+		"LayoutDropDownButton-flow":"Flow",
+		"LayoutDropDownButton-absolute":"Absolute"
 }
 });

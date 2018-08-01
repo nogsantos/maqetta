@@ -15,7 +15,7 @@ public class ListLibs extends Command {
 
     @Override
     public void handleCommand(HttpServletRequest req, HttpServletResponse resp, IUser user) throws IOException {
-        Library[] libs = ServerManager.getServerManger().getLibraryManager().getAllLibraries();
+        Library[] libs = ServerManager.getServerManager().getLibraryManager().getAllLibraries();
 
         JSONWriter jsonWriter = new JSONWriter(true);
         jsonWriter.startObject().addFieldName("userLibs").startArray();
@@ -25,10 +25,14 @@ public class ListLibs extends Command {
             jsonWriter.startObject().addField("id", id);
             jsonWriter.addField("version", version);
             jsonWriter.addField("root", libs[i].getDefaultRoot());
+            String required = libs[i].getRequired();
+            jsonWriter.addField("required", required!=null || (Boolean.parseBoolean(required)?true:false));
+            jsonWriter.addField("hasSource", libs[i].getSourcePath()!=null);
             jsonWriter.endObject();
         }
         jsonWriter.endArray().endObject();
         this.responseString = jsonWriter.getJSON();
+        resp.setContentType("application/json;charset=UTF-8");
     }
 
 }

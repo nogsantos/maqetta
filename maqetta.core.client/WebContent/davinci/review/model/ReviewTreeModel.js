@@ -1,39 +1,40 @@
 define([
 	    "dojo/_base/declare",
-	    "davinci/review/model/Resource",
-	    "davinci/ui/widgets/ResourceTreeModel"
-], function(declare, Resource, ResourceTreeModel){
+	    "davinci/Runtime",
+	    "davinci/model/Path",
+	    "davinci/review/model/Resource"
+], function(declare, Runtime, Path, Resource){
 	
 return declare("davinci.review.model.ReviewTreeModel", null, {
 
-	foldersOnly : false,
+	foldersOnly: false,
+
 	constructor: function(args) {
 		this.root = Resource.getRoot();
 		this.subscription = [dojo.subscribe("/davinci/review/resourceChanged", this, this.resourceChanged)];
 	},
 
 	destroy: function() {
-		for (var i=0; i<this.subscriptions.length; i++)
-			dojo.unsubscribe(this.subscription[i]);
+		this.subscriptions.forEach(dojo.unsubscribe);
 	},
 
 	getRoot: function(onItem) {
 		onItem(this.root);
 	},
-	mayHaveChildren: function(/*dojo.data.Item*/ item) {
-		return item.elementType=="ReviewVersion"&&!item.isDraft;
 
+	mayHaveChildren: function(/*dojo.data.Item*/ item) {
+		return item.elementType == "ReviewVersion" && !item.isDraft;
 	},
 	
-	getChildren: function(/*dojo.data.Item*/ parentItem, /*function(items)*/ onComplete) {
-		parentItem.getChildren(onComplete, true); // need to make the call sync, chrome is too fast for async
+	getChildren: function(/*dojo.data.Item*/ parentItem, /*function(items)*/ onComplete, /*function(items)*/ onError) {
+		parentItem.getChildren(onComplete, onError);
 	},
 	
 	getIdentity: function(/* item */ item) {
 		return item.getPath();
 	},
 
-	resourceChanged : function(result, type, changedResource) {
+	resourceChanged: function(result, type, changedResource) {
 		// Remove the changed resource and its children from the tree. Shortly, we will
 		// tell the tree about it's new children. But, if a child's identity matches the 
 		// identity of an existing item in the model, it will not be replaced with the 
@@ -41,11 +42,7 @@ return declare("davinci.review.model.ReviewTreeModel", null, {
 		// in.
 		if (changedResource) {
 			if (changedResource._isLoaded) {
-				var changedResourceChildren = null;
-				changedResource.getChildren(function(children) { changedResourceChildren = children; }, true);
-				dojo.forEach(changedResourceChildren, function(child) {
-					this.onDelete(child);
-				}.bind(this));
+				changedResource.getChildren(function(children) { children.forEach(this.onDelete, this); }.bind(this), true);
 			}
 			
 			this.onDelete(changedResource);
@@ -53,12 +50,11 @@ return declare("davinci.review.model.ReviewTreeModel", null, {
 		
 		// Reload the children. 
 		var parent = this.root;
-		var newChildren;
 		parent._isLoaded = false;
-		parent.getChildren(function(children) { newChildren = children; }, true);
-		
-		//Add new children
-		this.onChildrenChange(parent, newChildren);
+		parent.getChildren(function(children) { 
+			//Add new children
+			this.onChildrenChange(parent, children);
+		}.bind(this));
 	},
 
 	getLabel: function(/*dojo.data.Item*/ item) {
@@ -67,9 +63,13 @@ return declare("davinci.review.model.ReviewTreeModel", null, {
 			label += " (Draft)";
 		}
 		if (item.elementType == "ReviewFile") {
-			var path = new davinci.model.Path(label);
+			var path = new Path(label);
 			var segments = path.getSegments();
-			label = segments[segments.length-1]+".rev";
+			var editorExtension = Runtime.getExtension("davinci.editor", function (extension){
+				return extension.id === "davinci.review.CommentReviewEditor";
+			});
+			var extension = "."+editorExtension.extensions;
+			label = segments[segments.length-1] + extension;
 		}
 		return label;
 	},

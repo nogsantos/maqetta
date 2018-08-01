@@ -7,23 +7,24 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.davinci.server.user.IUser;
 import org.maqetta.server.Command;
-import org.maqetta.server.IVResource;
 
 public class CreateProject extends Command {
 
-   
     public void handleCommand(HttpServletRequest req, HttpServletResponse resp, IUser user) throws IOException {
         String projectName = req.getParameter("name");
-        boolean initContents = "true".equalsIgnoreCase(req.getParameter("initContents"));
+        if (projectName == null || projectName.equals("")) {
+        	errorString = "No project name specified";
+        }
+        String projectToClone = req.getParameter("projectToClone");
+        String projectTemplateName = req.getParameter("projectTemplate");
+
         boolean eclipseProject = "true".equalsIgnoreCase(req.getParameter("eclipseSupport"));
-        if(eclipseProject){
-        	IVResource newFile = user.createEclipseProject(projectName);
-        }else{
-        
-        	IVResource newFile = user.createProject(projectName);
+        if (eclipseProject) {
+        	user.createEclipseProject(projectName, projectToClone, projectTemplateName);
+        } else {
+        	user.createProject(projectName, projectToClone, projectTemplateName);
         }
         responseString = "OK";
-
     }
 
 }

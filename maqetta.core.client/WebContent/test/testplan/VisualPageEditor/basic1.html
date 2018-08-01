@@ -23,7 +23,7 @@
 		<li>Standard setup things: Clear the browser cache. Launch the Maqetta server. 
 				Login if necessary. 
 				In some cases, you'll want to setup a virgin user environment by creating a whole new user login.</li>
-		<li>From the New menu on the banner, choose New HTML File...</li>
+		<li>From the New menu on the banner, choose Create New Desktop Application...</li>
 		<li>Click OK to accept the default file name (file1.html)</li>
 		<li>Drag/drop any widget onto canvas</li>
 		<li>Click on the "Preview in browser" icon on editor toolbar 
@@ -49,9 +49,9 @@
 		<li>Standard setup things: Clear the browser cache. Launch the Maqetta server. 
 				Login if necessary. 
 				In some cases, you'll want to a virgin user environment by creating a whole new user login.</li>
-		<li>On main menubar, choose "New HTML File" to create a new file</li>
+		<li>On main menubar, choose "Create New Desktop Application" to create a new file</li>
 		<li>Drag a few widgets onto the canvas (e.g., Button, TextBox, Calendar).</li>
-		<li>Click on the "SaveAs" icon on the main toolbar to save the new file. In the dialog that appears, choose a new file name.</li>
+		<li>Issue a "SaveAs" command from the main toolbar (dropdown from Save ComboButton) to save the new file. In the dialog that appears, choose a new file name.</li>
 		<li>Click on the "X" close button for the editor tab for the newly renamed file</li>
 		<li>In the Files palette, double-click on the file you just created</li>
 	</ol>
@@ -64,14 +64,14 @@
 			as how it was.</li>
 	</ol>
 
-	<h2 class="test_section">Cut/copy/paste/delete</h2>
+	<h2 class="test_section">Cut/Copy/Paste/Delete: Simple</h2>
 	<h3 class="steps_subsection">Steps</h3>
 	<ol class="steps">
 		<li>Standard setup things: Clear the browser cache. Launch the Maqetta server. 
 				Login if necessary. 
 				In some cases, you'll want to a virgin user environment by creating a whole new user login.</li>
-		<li>On main menubar, choose "New HTML File" to create a new file</li>
-		<li>Drag a few widgets onto the canvas (e.g., Button, TextBox, Calendar).</li>
+		<li>On main menubar, choose "Create New Desktop Application" to create a new file</li>
+		<li>Drag a few "primitive" Dojo widgets onto the canvas (e.g., Button, TextBox, Calendar).</li>
 		<li>Select one of the widgets. Click on Cut. Then click on Paste.
 			The cursor should change to a crosshair cursor. Click somewhere on canvas and the
 			widget that was cut from the document should now be pasted back in.</li>
@@ -89,6 +89,29 @@
 		<li>The Copy command should not remove the widget. Paste should add a second copy.</li>
 		<li>The Delete command should have removed the widget, and Paste should not have added it back in.</li>
 	</ol>
+	
+	<h2 class="test_section">Cut/Copy/Paste/Delete: Advanced</h2>
+	<h3 class="steps_subsection">Steps</h3>
+	<ol class="steps">
+		<li>Standard setup things: Clear the browser cache. Launch the Maqetta server. 
+				Login if necessary. 
+				In some cases, you'll want to a virgin user environment by creating a whole new user login.</li>
+		<li>On main menubar, choose "Create New Desktop Application" to create a new file.</li>
+		<li>On main menubar, choose "Create New Desktop Application" to create a second file.</li>
+		<li>Switch back to the first file, and drag a few "primitive" Dojo widgets onto the canvas (e.g., Button, TextBox, Calendar).</li>
+		<li>Drag at least one DataStore-based widget onto the canvas of the first file (e.g., GridX or Tree) and click OK/Finish
+			on the  smart input dialog that comes up.</li>
+		<li>Select at least one of the primitive widgets and at least one of the DataStore-based widgets.</li>
+		<li>Click on Cut and the selected widgets should be removed from the page.</li>
+		<li>Switch to the second page and click on Paste. The cursor should change to a crosshair cursor. 
+			Click somewhere on canvas and the widgets that were cut should be pasted into the 2nd document.</li>
+		<li>Save and preview the 2nd page to ensure markup for the pasted widgets is correct (especially for the DataStore-based
+			widget).</li>
+	</ol>
+	<h3 class="expectedResults_subsection">Expected results</h3>
+	<ol class="expectedResults">
+		<li>The Cut command should have removed the widgets from the first page, and Paste added them to the 2nd panel.</li>
+	</ol>
 
 	<h2 class="test_section">Undo/Redo</h2>
 	<h3 class="steps_subsection">Steps</h3>
@@ -96,7 +119,7 @@
 		<li>Standard setup things: Clear the browser cache. Launch the Maqetta server. 
 				Login if necessary. 
 				In some cases, you'll want to a virgin user environment by creating a whole new user login.</li>
-		<li>On main menubar, choose "New HTML File" to create a new file</li>
+		<li>On main menubar, choose "Create New Desktop Application" to create a new file</li>
 		<li>Drag a few widgets onto the canvas (e.g., Button, TextBox, Calendar).</li>
 		<li>Click Undo until all widgets disappear.</li>
 		<li>Click Redo until all widgets reappear.</li>
@@ -122,7 +145,7 @@
 		<li>Standard setup things: Clear the browser cache. Launch the Maqetta server. 
 				Login if necessary. 
 				In some cases, you'll want to a virgin user environment by creating a whole new user login.</li>
-		<li>On main menubar, choose "New HTML File" to create a new file</li>
+		<li>On main menubar, choose "Create New Desktop Application" to create a new file</li>
 		<li>Drag Toolbar, Calendar, and Button onto canvas.</li>
 		<li>Click on switch themes icon. A dialog should appear. Choose Sketch.
 			The widgets should now be styled with a pseudo-handdrawn style.</li>
@@ -141,7 +164,7 @@
 		<li>Standard setup things: Clear the browser cache. Launch the Maqetta server. 
 				Login if necessary. 
 				In some cases, you'll want to a virgin user environment by creating a whole new user login.</li>
-		<li>On main menubar, choose "New HTML File" to create a new file</li>
+		<li>On main menubar, choose "Create New Desktop Application" to create a new file</li>
 		<li>Drag TextBox, ComboBox, and Button onto canvas.
 			They should be added in "flow" layout (left-to-right, top-to-bottom) because
 			that's the default preference value.</li>
@@ -168,11 +191,13 @@
 		<li>Standard setup things: Clear the browser cache. Launch the Maqetta server. 
 				Login if necessary. 
 				In some cases, you'll want to a virgin user environment by creating a whole new user login.</li>
-		<li>On main menubar, choose "New HTML File" to create a new file</li>
+		<li>On main menubar, choose "Create New Desktop Application" to create a new file</li>
 		<li>Drag TextBox, ComboBox, and Button onto canvas.
 			They should be added in "flow" layout (left-to-right, top-to-bottom) because
 			that's the default preference value.</li>
-		<li>Click on the sticky note icon. After a few seconds, the Dojo rich text editor
+		<li>Click on the sticky note icon. A sticky note widget should appear on the canvas
+			that says "Enter note". Double click on the yellow sticy note
+			and the Dojo rich text editor
 			should appear as a very large overlay on the page canvas.
 			Create some rich text, such as bullets. Then click away from the rich text editor
 			to cause your changes to be added to the document as a yellow sticky note
@@ -191,7 +216,7 @@
 		<li>Standard setup things: Clear the browser cache. Launch the Maqetta server. 
 				Login if necessary. 
 				In some cases, you'll want to a virgin user environment by creating a whole new user login.</li>
-		<li>On main menubar, choose "New HTML File" to create a new file</li>
+		<li>On main menubar, choose "Create New Desktop Application" to create a new file</li>
 		<li>Drag TextBox, ComboBox, and Button onto canvas.</li>
 		<li>Alternatively, click on the four icons.</li>
 	</ol>

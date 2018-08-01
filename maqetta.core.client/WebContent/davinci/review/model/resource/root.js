@@ -3,8 +3,8 @@ define([
 	"davinci/model/resource/Resource",
 	"davinci/review/model/resource/Folder",
 	"davinci/Runtime",
-	"davinci/Workbench"
-], function(declare, Resource, reviewFolder, Runtime, Workbench) {
+	"dojo/Deferred"
+], function(declare, Resource, reviewFolder, Runtime, Deferred) {
 
 var root = declare(Resource, {
 
@@ -15,44 +15,62 @@ var root = declare(Resource, {
 	},
 
 	findFile: function(version, fileName) {
-		var children;
-		var result = null;
-		this.getChildren(function(c) { children= c; }, true);
-		var node;
-		dojo.forEach(children, function(item) {
-			if (item.timeStamp == version) {
-				node = item;
-			}
-		});
-		if (node != null) {
-			node.getChildren(function(c) { children= c; }, true);
+		var promise = new Deferred();
+		this.getChildren(function(children) {
+			var node = null;
 			dojo.forEach(children, function(item) {
-				if (item.name == fileName) { 
-					result = item;
+				if (item.timeStamp == version) {
+					node = item;
 				}
 			});
+	
+			var result = null;
+			if (node != null) {
+				node.getChildren(function(children) {
+					dojo.forEach(children, function(item) {
+						if (this._fileNamesEqual(item.name, fileName)) { 
+							result = item;
+						}
+					}.bind(this));
+					promise.resolve(result);
+				}.bind(this));
+			}
+		}.bind(this));
+		return promise;
+	},
+	
+	_fileNamesEqual: function(file1, file2) {
+		if (file1.indexOf("./") != 0) {
+			file1 = "./" + file1;
 		}
-		return result;
+		if (file2.indexOf("./") != 0) {
+			file2 = "./" + file2;
+		}
+		
+		return file1 === file2;
 	},
 
 	findVersion: function(designerId, version) {
+		var promise = new Deferred();
+		
 		//Get the top-level nodes of the tree (e.g., the children)
-		var children;
-		this.getChildren(function(c) { children= c; }, true);
-
-		//Look amongst the children for a match
-		var foundVersion = null;
-		dojo.some(children,function(item){
-			if (item.designerId == designerId && item.timeStamp == version) {
-				foundVersion = item;
-				return true;
-			}
-			return false;
+		this.getChildren(function(children) {
+			//Look amongst the children for a match
+			var foundVersion = null;
+			dojo.some(children,function(item){
+				if (item.designerId == designerId && item.timeStamp == version) {
+					foundVersion = item;
+					return true;
+				}
+				return false;
+			});
+			promise.resolve(foundVersion);
 		});
-		return foundVersion;
+		
+		return promise;
 	},
 
-	getChildren: function(onComplete,sync) {
+	getChildren: function(onComplete, onError) {
 		if (!this._isLoaded) {
 			if (this._loading) {
 				this._loading.push(onComplete);
@@ -60,10 +78,9 @@ var root = declare(Resource, {
 			}
 			this._loading = [];
 			this._loading.push(onComplete);
-			var location = Workbench.location().match(/http:\/\/.*:\d+\//);
+			
 			Runtime.serverJSONRequest({
-				url:  location + "maqetta/cmd/listVersions",
-				sync:sync,
+				url:  "cmd/listVersions",
 				load : dojo.hitch(this, function(responseObject, ioArgs) {
 					this.children=[];
 					for (var i=0; i<responseObject.length; i++) {
@@ -84,7 +101,7 @@ var root = declare(Resource, {
 		}
 		onComplete(this.children);
 	},
-
+	
 	getPath: function() {
 		return ".review/snapshot";
 	}

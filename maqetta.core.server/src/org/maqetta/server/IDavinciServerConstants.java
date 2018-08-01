@@ -2,10 +2,11 @@ package org.maqetta.server;
 
 public interface IDavinciServerConstants {
 
-	public static final String BASE_DIRECTORY_PROPERTY = "maqetta.baseDirectory";
-	public static final String SERVER_DEBUG = "maqetta.serverDebug";
+	public static final String SITECONFIG_DIRECTORY_PROPERTY = "maqetta.siteConfigDirectory";
+	public static final String CONFIG_FILE = "orion.core.configFile";
 	public static final String LOCAL_INSTALL = "maqetta.localInstall";
 	public static final String MAX_USERS = "maqetta.maxUsers";
+	public static final String DOJO_WEB_BUILDER = "maqetta.dojoWebBuilder";
 
 	public static final String BUNDLE_ID = "maqetta.core.server";
 
@@ -32,6 +33,20 @@ public interface IDavinciServerConstants {
 	public static final String REVIEW_DIRECTORY_NAME = ".review";
 
 	public static final String WORKING_COPY_EXTENSION = ".workingcopy";
+	
+	public static final String REVIEW_COOKIE_DESIGNER = "davinci_designer";
+	public static final String REVIEW_COOKIE_VERSION = "davinci_version";
+	public static final String REVIEW_DESIGNER_ATTR = "reviewDesigner";
+	public static final String REVIEW_VERSION_ATTR = "reviewVersion";
+	
+	public static final String PROJECT_TEMPLATES_DIRECTORY_NAME = ".project-templates";
+	public static final String PROJECT_TEMPLATES_INDEX_FILE = "__index.json";
+	public static final int PROJECT_TEMPLATES_MAX = 1000;	// max# of returned project templates from cmd/getProjectTemplates
+	public static final String PROJECT_TEMPLATES_SHARING_ALL_ENABLED = "maqetta.projecttemplates.sharing.all.enabled";
+	public static final String DOT_PROJECT = ".project";
+	public static final String DOT_SETTINGS = ".settings";
+	public static final String LIBS_SETTINGS = "libs.settings";
+	public static final String WEBCONTENT = "WebContent";
 
 	// Extension point definitions
 	public static final String EXTENSION_POINT_COMMAND = "command";
@@ -46,6 +61,8 @@ public interface IDavinciServerConstants {
 	public static final String EP_ATTR_AJAXLIBRARY_NAME = "name";
 	public static final String EP_TAG_LIBRARYPATH = "libraryPath";
 	public static final String EP_ATTR_LIBRARYPATH_LOCATION = "location";
+	public static final String EP_ATTR_LIBRARYPATH_SOURCE = "source";
+	public static final String EP_ATTR_REQUIRED = "required";
 	public static final String EP_ATTR_LIBRARYPATH_NAME = "name";
 
 	public static final String EP_TAG_METADATA = "metadata";
@@ -95,6 +112,8 @@ public interface IDavinciServerConstants {
     public static final String THEMES_DIRECTORY_NAME = "themes";
 	public static final String DEFAULT_PROJECT = "project1";
 	public static final String INWAR_PROPERTY = "inWar";
+	public static final String USERNAME_TYPEAHEAD_ENABLED = "maqetta.username.typeahead.enabled";
+
 	public static final int SESSION_TIMEOUT = 60 * 60; // time in seconds 
 
 

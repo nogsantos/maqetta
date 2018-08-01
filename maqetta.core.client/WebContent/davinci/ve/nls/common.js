@@ -4,6 +4,11 @@ define({ root:
 search: "Search",
 filter: "Filter",
 "new": "New",
+errorSavingFile: "Error saving file: ${0} details: ${1}",
+"palette":"palette",
+
+/* Menu items on file tabs */
+"closeAllEditors":"Close all tabs",
 
 /* actions */
 undo: "Undo",
@@ -116,11 +121,26 @@ snapToNearestWidget: "Snap to nearest widget",
 showPossibleParents: "When dragging, show possible parents",
 warnOnCSSOverride: "Warn on CSS Override",
 absoluteWidgetsZindex: "z-index for sketch mode",
+widgetPaletteLayout: "In Palette, display widgets as",
+widgetPaletteShow_Icons: "icons",
+widgetPaletteShow_List: "list",
 liveEdit: "Live Edit",
+zazl: "Enable <a href='http://zazl.org' target='_blank'>Zazl Optimizer</a>",
 
 /* WidgetSelectionPane*/
 selectorPrefix: "Selector Prefix",
 component: "Component",
+
+/* Palette*.js */
+alternates: "Alternates",
+alternateWidgets: "Alternate widgets:",
+howToChooseAlternate: "To choose alternate widget, click-select current widget, then click on up arrow icon.",
+summary: "Summary:",
+description: "Description:",
+showSuggestedWidgets: "Suggested Widgets",
+showAllWidgets: "All Widgets",
+MoreIconTitleString: "Click here to see alternative similar widgets",
+HelpIconTitleString: "Click here to see descriptive info about this widget",
 
 __dummy__: ""
 }

@@ -10,7 +10,7 @@ return declare("davinci.ve.commands.ModifyRichTextCommand", null, {
 
 	constructor: function(widget, properties, children, context){
 
-		this._oldId = (widget ? widget.id : undefined);
+		this._oldId = widget ? widget.id : undefined;
 		
 		this._properties = properties = (properties || {});
 		if (properties.richText) {// wdr richtext
@@ -25,7 +25,7 @@ return declare("davinci.ve.commands.ModifyRichTextCommand", null, {
 		this._context = context || widget.getContext();
 	},
 
-	setContext : function(context){
+	setContext: function(context){
 		this._context = context;
 	},
 	add: function(command){
@@ -47,12 +47,13 @@ return declare("davinci.ve.commands.ModifyRichTextCommand", null, {
 		if(!this._oldId || !this._properties){
 			return;
 		}
-		
-		var widget = davinci.ve.widget.byId(this._oldId);
+
+		var widgetUtils = require("davinci/ve/widget");
+		var widget = widgetUtils.byId(this._oldId);
 		if(!widget){
 			return;
 		}
-		this._parentWidget = widget.getParent() || widget.parent; // maybe this
+		this._parentWidget = widget.getParent();
 		if (!this._oldText){
 			this._oldText = widget._srcElement.getElementText(this._context);
 			if (this._oldText && (typeof this._oldText == 'string')){
@@ -66,19 +67,21 @@ return declare("davinci.ve.commands.ModifyRichTextCommand", null, {
 			this._newData = {type: this._oldData.type,
 				properties: dojo.mixin({}, this._oldData.properties, this._properties),
 				children: this._newText,
-				states: this._oldData.states,
+				maqStates: this._oldData.maqStates,
+				maqDeltas: this._oldData.maqDeltas,
 				context:this._context
-				};
+			};
 			this._oldData = {type: this._oldData.type,
-					properties: dojo.mixin({}, this._oldData.properties, this._properties),
-					children: this._oldText,
-					states: this._oldData.states,
-					context:this._context
-					};
+				properties: dojo.mixin({}, this._oldData.properties, this._properties),
+				children: this._oldText,
+				maqStates: this._oldData.maqStates,
+				maqDeltas: this._oldData.maqDeltas,
+				context:this._context
+			};
 		}
-		
-		if(this._context){
-			this._context.detach(widget);
+		var context = this._context;
+		if(context){
+			context.detach(widget);
 		}	
 
 		if(this._properties.id){
@@ -94,11 +97,13 @@ return declare("davinci.ve.commands.ModifyRichTextCommand", null, {
 		var index = this._parentWidget.indexOf(widget);
 		this._parentWidget.removeChild(widget);
 		widget.destroyWidget(); 
-		if (this._newId)
+		if (this._newId) {
 			this._newData.properties.id = this._newId; // make sure the id is restored
-		if (this._newId_isTempID)
-			this._newData.properties.isTempID = this._newId_isTempID; 
-		newWidget = davinci.ve.widget.createWidget(this._newData);
+		}
+		if (this._newId_isTempID) {
+			this._newData.properties.isTempID = this._newId_isTempID;
+		}
+		newWidget = widgetUtils.createWidget(this._newData);
 		
 		if(!newWidget){
 			return;
@@ -109,11 +114,22 @@ return declare("davinci.ve.commands.ModifyRichTextCommand", null, {
 			this._refresh(newWidget);
 		
 		}
+		
+		//davinci.ve.widget.addChild(parent, widget, index);
+		if (context) {
+			context.widgetAddedOrDeleted();
+			if (this._oldId != this._newId) {
+				context.widgetChanged(context.WIDGET_ID_CHANGED, newWidget, this._oldId);
+			}
+			context.widgetChanged(context.WIDGET_MODIFIED, newWidget);
+		}
+
 		this.newWidget=newWidget;
 		dojo.publish("/davinci/ui/widget/replaced", [newWidget, widget]);
 		
 		// Recompute styling properties in case we aren't in Normal state
-		davinci.ve.states.resetState(newWidget);
+		var states = require("davinci/ve/States");
+		states.resetState(newWidget.domNode);
 	},
 
 	undo: function(){
@@ -121,15 +137,12 @@ return declare("davinci.ve.commands.ModifyRichTextCommand", null, {
 		if(!this._newId || !this._oldData){
 			return;
 		}
-		var widget = davinci.ve.widget.byId(this._newId);
+		var widgetUtils = require("davinci/ve/widget");
+		var widget = widgetUtils.byId(this._newId);
 		if(!widget){
 			return;
 		}
-		var parent = widget.getParent();
-		if(!parent){
-			debugger;
-			return;
-		}
+
 		var index = dojo.indexOf(this._parentWidget.getChildren(), widget);
 		if(index < 0){
 			return;
@@ -146,22 +159,19 @@ return declare("davinci.ve.commands.ModifyRichTextCommand", null, {
 		// add old
 		this._oldData.children = this._oldText;
 		this._oldData.properties.id = this._oldId; // make sure the id is restored
-		var newWidget = davinci.ve.widget.createWidget(this._oldData);
-		if(!widget){
-			debugger;
-			return;
-		}
+		var newWidget = widgetUtils.createWidget(this._oldData);
 
-
-		parent.addChild(newWidget, index);
+		this._parentWidget.addChild(newWidget, index);
 		if(context){
 			this._refresh(newWidget);
-
 		}
+		context.widgetAddedOrDeleted();
+		context.widgetChanged(context.WIDGET_MODIFIED, newWidget);
 		dojo.publish("/davinci/ui/widget/replaced", [newWidget, widget]);
 		
 		// Recompute styling properties in case we aren't in Normal state
-		davinci.ve.states.resetState(newWidget);
+		var states = require("davinci/ve/States");
+		states.resetState(newWidget.domNode);
 	},
 	
 	_refresh: function(widget){
@@ -169,11 +179,8 @@ return declare("davinci.ve.commands.ModifyRichTextCommand", null, {
 		// we need the timer to let the model catch up to prevent corruption.
 		
 		var containerNode = widget.getContainerNode();
-		// this is from davinci.ve.Context. _processWidgets line 584
 		if (containerNode) {
-			var dj = this._context.getDojo();
-	        dj["require"]("dojo.parser");
-	        dj.parser.parse(containerNode);
+			this._context.getGlobal()["require"]("dojo/parser").parse(containerNode);
 	    }
         this._context.attach(widget);
         widget.startup();

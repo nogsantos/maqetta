@@ -22,15 +22,18 @@ define({ root:
 		"include":"Include",
 		"source":"Source",
 		"baseLocation":"Base Location",
+		"invalidDownloadFileName": "File name may only contain letters, numbers, &#8216;_&#8216;, and &#8216;.&#8216;.",
 		
 		//DownloadSelected.js
 		"selectedFiles":"Selected Files",
 		"noFilesSelected":"No files selected!",
+		"downloadButtonLabel": "Download",
 		
 		//NewTheme.js
 		"themeAlreadyExists":"Theme already Exists!",
 		"invalidThemeName": "Invalid theme name",
 		"errorCreatingTheme": "Error creating theme: ",
+		"creatingTheme": "Creating theme",
 		
 		//OpenThemeDialog.js
 		"noUserThemes":"No user themes found in workspace. Please create a new theme before editing.",
@@ -50,7 +53,9 @@ define({ root:
 		"other":"Other:",
 		"selectTheme":"Select theme",
 		"themeSet":"Theme set:",
-	    "themeVersionMessage": "Theme version does not match workspace version this could produce unexpected results. We suggest recreating the custom theme using the current version of Maqetta and deleting the existing theme.",
+		"themeVersionMessage": "Theme version does not match workspace version this could produce unexpected results. We suggest recreating the custom theme using the current version of Maqetta and deleting the existing theme.",
+		"addThemeSet": "Add theme set",
+		"deleteThemeSet":"Delete theme set",
 
 		
 		//SaveAsWidgetForm.js
@@ -63,11 +68,17 @@ define({ root:
 		"workspaceLocation":"Workspace Location",
 		
 		//Resource.js
+		"savingReadonlyFile": "This file is a read-only file. Please save it to a writeable location.",
 		
 		//doItLabels
 		"create":"Create",
 		"open":"Open",
 		"save":"Save",
+		"select": "Select",
+		"update":"Update",
+		
+		//general
+		"unknown":"unknown",
 		
 		//fileDialog
 		"fileName":"File name",//used in templates/download.html
@@ -75,23 +86,31 @@ define({ root:
 		"parentFolder":"Parent folder: ",//used in add files as well
 		"newFolderLabel":"New folder",
 		"cancelButtonLabel":"Cancel",
+		"newFolderName": "Name:",
+		"createFolder": "Create Folder",
 		
 		//dialog titles
 		"createNewFile":"Create New File",
-		"createNewHTMLFile":"Create New HTML File",
+		"createMobileApplication":"Create a Mobile Application",
+		"createDesktopApplication":"Create a Desktop Application",
+		"createSketchHiFi":"Create a Sketch (high-fidelity)",
+		"createSketchLoFi":"Create a Sketch (low-fidelity)",
 		"createNewCSSFile":"Create New CSS File",
 		"createNewJSFile":"Create New JavaScript File",
 		//"openFile":"Open File",
 		"createNewFolder":"Create New Folder",
 		"saveFileAs":"Save File As",
+		"downloadFile":"Download",
 		
 		//addFiles
 		"selectFiles":"Select Files...",
+		"selectZip":"Select ZIP file...",
 		"upload":"Upload",
-		"addFiles":"Upload Files",
+		"addFiles":"Upload",
 		"uploading":"Uploading...",
 		"completed":"completed: ${0} \n",
 		"done":"Done",
+		"explodeZipWarning":"Warning: Contents of .zip files will overwrite any conflicting files in your workspace",
 		
 		//checkFileName
 		"mustEnterFileName":"You must enter a file name.",
@@ -103,15 +122,20 @@ define({ root:
 		
 		//deleteAction
 		"areYouSureDelete":"Are you sure you want to delete ${0}?",
+		"areYouSureDeleteProject":"Are you sure you want to delete project ${0}?",
 		"noResourcesSelected":"No resources are currently selected.",
 		
 		/*Templates*/
 		//download.html -- see above for file name
+		"optimizeOption": "Use Dojo Web Builder (experimental)",
+		"downloadFullSource": "Download uncompressed source for selected libraries (if available)",
+		"selectAll": "All",
+		"selectNone": "None",
 		
 		//newtheme.html
 		"themeToClone":"Theme to clone",
 		"newName":"New Name",
-		
+				
 		//OpenThemeDialog.html
 		"selectTheme":"Select a Theme",
 
@@ -120,6 +144,7 @@ define({ root:
 		"renameProjectDialogTitle": "Rename Project To...",
 		"deleteProjectButtonTitle": "Delete Project",
 		"renameProjectButtonTitle": "Rename Project...",
+		"deleteOnlyProjectError": "You can't delete the only project in your workspace!",
 		
 		//NewFile.html
 		"newFileShowFiles":"Show file picker",
@@ -127,19 +152,73 @@ define({ root:
 		"root":"(root)",
 		
 		//NewHTMLFileOptions.html - Composition type strings
-		"nhfoCompositionType":"Composition type:",
-		'nhfoCompositionTypeTooltip':'<div>Composition type establishes the initial editing mode for the New HTML page. Choices:</div>'+
-			'<ul><li><b>Device</b>: "desktop" or one of various mobile devices (e.g., iphone)</li>'+
-			'<li><b>Hi-fi vs lo-fi</b>: high fidelity uses a final-form theme, low fidelity uses a pseudo hand-drawn theme</li>'+
-			'<li><b>Page vs sketch</b>: "page" uses flow layout, "sketch" uses absolute layout</li></ul>'+
-			'<div>For mobile devices, only hi fidelity and flow layout are supported.',
-		"nhfoCTMenu_desktop_hifi_absolute":"Desktop hi-fi sketch",
-		"nhfoCTMenu_desktop_hifi_flow":"Desktop hi-fi page",
-		"nhfoCTMenu_desktop_lofi_absolute":"Desktop lo-fi sketch",
-		"nhfoCTMenu_desktop_lofi_flow":"Desktop lo-fi page",
+		"nhfoDevice":"Device:",
+		'nhfoDeviceTooltip':'Select an initial mobile device',
 		
 		//NewHTMLFileOptions.html - Theme strings
 		"nhfoThemeButtonLabel":"Theme...",
-		"nhfoThemeButtonTitle":"Select themes or theme set for new HTML file"
+		"nhfoThemeButtonTitle":"Select themes or theme set for new HTML file",
+
+		//Rename
+		"renameNewLabel": "Name:",
+		"renameButtonLabel": "Rename",
+		"renameDialogTitle": "Rename To...",
+
+		//Explorer
+		"createProject": "New project",
+		"createProjectMenuItem": "New project...",
+		"deleteProjectMenuItem": "Delete this project...",
+		"renameProjectMenuItem": "Rename this project...",
+		"saveAsProjectTemplateMenuItem": "Save as project template...",
+		"manageProjectTemplatesMenuItem": "Manage project templates...",
+		"modifyLibrariesMenuItem":"Modify libraries...",
+		"modifyLibraries":"Modify libraries",
+		"projectColon":"Project:",
+		"ProjectMenu":"Project menu",
+		
+		//NewProject
+		"newProjectName": "Name:",
+		"newProjectTemplate":"Template:",
+		"newProjectUseProjectTemplate":"Use project template",
+		"newProjectCloneExistingProject":"Copy files from current project into new project",
+		"newProjectEclipseSupport": "New project should be Eclipse-compatible",
+		"newProjectNameExists": "A project with this name already exists",
+
+		//NewProjectTemplate
+		"saveAsProjectTemplate": "Save as project template",
+		"newProjectTemplateName": "Project template name:",
+		"newProjectTemplateShareLabel": "Share with everyone",
+		"newProjectTemplateOverwrite": "Project template {0} already exists. OK to overwrite?",
+		"newProjectTemplateCreationSuccess":"Project template {0} has been saved",
+		"newProjectTemplateCreationFailure":"Error: Project template {0} save operation failed",
+		"newProjectTemplateCancelled":"Operation cancelled",
+		
+		//ManageProjectTemplates
+		"manageProjectTemplates": "Manage project templates",
+		"ManageProjectTemplatesHeaderName":"Project template name",
+		"ManageProjectTemplatesHeaderShared":"Share with everyone?",
+		"ManageProjectTemplatesHeaderCreatedBy":"Created by",
+		"ManageProjectTemplatesHeaderCreatedOn":"Created on",
+		"ManageProjectTemplatesHeaderLastModified":"Last updated",
+		"ManageProjectTemplatesNoTemplates":"You have no project templates.",
+		"ManageProjectTemplatesDuplicateNames":"Invalid entries - two project templates have the same name",
+		"ManageProjectTemplateAboutToOccur":"The following actions are about to occur:",
+		"ManageProjectTemplateDeletions":"project template deletions",
+		"ManageProjectTemplateModifications":"project template modifications",
+		"ManageProjectTemplateOKToProceed":"OK to proceed?",
+		"ManageProjectTemplatesInitializing":"Initializing...",
+		
+		//UserLibraries
+		"modify": "Modify",
+		
+		//UserName.js
+		"User": "Account",
+
+		//SelectProjectDialog.js
+		"currentProject": "Current Project:",
+		"selectProject": "Select a Project:",
+		
+		//General
+		"NoteOperationNotUndoable":"Note: this operation is not undoable."
 }
 });

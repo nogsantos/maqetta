@@ -1,31 +1,23 @@
 package maqetta.core.server.user;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URISyntaxException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Vector;
 
-//import maqetta.core.server.internal.Links;
 import maqetta.core.server.util.VResourceUtils;
 
-
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOCase;
-import org.apache.commons.io.filefilter.IOFileFilter;
-import org.apache.commons.io.filefilter.NameFileFilter;
-import org.apache.commons.io.filefilter.SuffixFileFilter;
-import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.davinci.ajaxLibrary.ILibInfo;
 import org.davinci.ajaxLibrary.ILibraryFinder;
 import org.davinci.ajaxLibrary.Library;
 import org.davinci.server.internal.Activator;
-import org.davinci.server.review.Constants;
 import org.davinci.server.user.IPerson;
 import org.davinci.server.user.IUser;
 import org.davinci.server.user.LibrarySettings;
@@ -34,42 +26,29 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.maqetta.project.util.EclipseProjectUtil;
 import org.maqetta.server.IDavinciServerConstants;
-import org.maqetta.server.ILink;
-import org.maqetta.server.ILinks;
 import org.maqetta.server.IStorage;
 import org.maqetta.server.IVResource;
 import org.maqetta.server.ServerManager;
 import org.maqetta.server.StorageFileSystem;
-import org.maqetta.server.VDirectory;
 import org.maqetta.server.VFile;
 import org.maqetta.server.VLibraryResource;
+import org.maqetta.server.VStorageDirectory;
 import org.maqetta.server.VWorkspaceRoot;
 import org.osgi.framework.Bundle;
 
 public class User implements IUser {
 
 	protected IStorage userDirectory;
+	protected IStorage projectTemplatesDirectory;
 	//protected Links links;
 	protected IPerson person;
 	protected IVResource workspace;
-    static {
-        Constants.LOCAL_INSTALL_USER_OBJ = 
-             new User(new IPerson() {
-                public String getUserName() {
-                    return Constants.LOCAL_INSTALL_USER_NAME;
-                }
-                public String getEmail() {
-                    return "";
-                }
-             }
-            ,ReviewManager.getReviewManager().getBaseDirectory());
-        
-    }	
+  
     public User(IPerson person) {
 		this.person = person;
 	}
 
-	public User(IPerson person, IStorage userDirectory) {
+	public User(IPerson person, IStorage userDirectory) throws IOException {
 		this(person);
 		this.userDirectory = userDirectory;
 		userDirectory.mkdirs();
@@ -90,69 +69,25 @@ public class User implements IUser {
 	public void rebuildWorkspace() {
 		this.workspace = newWorkspaceRoot();
 		IStorage[] userFiles = this.userDirectory.listFiles();
-		
 		for(int j=0;j<userFiles.length;j++){
-			if(!userFiles[j].isDirectory()) continue;
-			LibrarySettings settings = this.getLibSettings(userFiles[j]);
-			if(!settings.exists()) continue;
-			Vector<ILibInfo> libs = new Vector();
-			libs.addAll(Arrays.asList( settings.allLibs()));
-			
-			
+			if(isConfig(userFiles[j].getName()) || !userFiles[j].isDirectory()) continue;
 			IVResource workspace = this.workspace;
-			IVResource firstFolder = new VDirectory(workspace, userFiles[j].getName());
+			
+			IVResource firstFolder = new VStorageDirectory(userFiles[j], workspace, userFiles[j].getName());
 			this.workspace.add(firstFolder);
-			for (int i = 0; i < libs.size(); i++) {
-				IVResource root = firstFolder;
-				String defaultRoot = libs.get(i).getVirtualRoot();
-				
-				if(defaultRoot==null) continue;
-				
-				Library b = this.getLibrary(libs.get(i));
-				/* library not found on server so avoid adding it to the workspace */
-				if (b == null) {
-					continue;
-				}
-				URL file = b.getURL("");
-				// TODO temp fix to avoid adding virtual library entries that don't
-				// exist to the workspace.
-				if (file == null) {
-					continue;
-				}
-				IPath path = new Path(defaultRoot);
-				for (int k = 0; k < path.segmentCount(); k++) {
-					String segment = path.segment(k);
-					IVResource v = root.get(segment);
-					if (v == null) {
-						/* creating virtual directory structure, so READ ONLY */
-						v = new VDirectory(root, segment,true);
-						root.add(v);
-					}
-					root = v;
-				}
-	
-				
-				IVResource libResource = new VLibraryResource(b, file,"", "");
-				/* need a special case for library items whos root is the project roots */
-				//if(path.segmentCount()==0){
-					
-				IVResource[] children = libResource.listFiles();
-				for(int p=0;p<children.length;p++)
-					root.add(children[p]);
-				//}else{
-				//	root.add(libResource);
-				//}
-			}
 		}
 	}
-	
+	private boolean isConfig(String folderName){
+		if(folderName==null) return true;
+		return folderName.equals(IDavinciServerConstants.SETTINGS_DIRECTORY_NAME);
+	}
 	
 	public ILibraryFinder[] getFinders(String base){
-		ILibraryFinder[] finders = ServerManager.getServerManger().getLibraryManager().getLibraryFinders();
+		ILibraryFinder[] finders = ServerManager.getServerManager().getLibraryManager().getLibraryFinders();
 		IStorage baseFile = this.userDirectory.newInstance(this.userDirectory, base);
 		Vector<ILibraryFinder> allLibs = new Vector();
 		for(int i=0;i<finders.length;i++){
-			ILibraryFinder finder = finders[i].getInstance(baseFile.toURI());
+			ILibraryFinder finder = finders[i].getInstance(baseFile.toURI(), baseFile.getName());
 			allLibs.add(finder);
 		}
 		return allLibs.toArray(new ILibraryFinder[allLibs.size()]);
@@ -160,12 +95,13 @@ public class User implements IUser {
 	
 	public ILibInfo[] getExtendedSettings(String base){
 		
-		ILibraryFinder[] finders = ServerManager.getServerManger().getLibraryManager().getLibraryFinders();
+		ILibraryFinder[] finders = ServerManager.getServerManager().getLibraryManager().getLibraryFinders();
 		IStorage baseFile = this.userDirectory.newInstance(this.userDirectory, base);
 		Vector<ILibInfo> allLibs = new Vector();
 		for(int i=0;i<finders.length;i++){
-			ILibraryFinder finder = finders[i].getInstance(baseFile.toURI());
-			allLibs.addAll(Arrays.asList(finder.getLibInfo()));
+			ILibraryFinder finder = finders[i].getInstance(baseFile.toURI(), baseFile.getName());
+			ILibInfo[] libs = finder.getLibInfo();
+			allLibs.addAll(Arrays.asList(libs));
 		}
 		return (ILibInfo[]) allLibs.toArray(new ILibInfo[allLibs.size()]);
 	}
@@ -173,8 +109,12 @@ public class User implements IUser {
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#createEclipseProject(java.lang.String)
 	 */
-	public IVResource createEclipseProject(String projectName){
-		IVResource project = createProject(projectName, "WebContent", true);
+	
+	public IVResource createEclipseProject(String projectName) throws IOException {
+		return createEclipseProject(projectName, "", "");
+	}
+	public IVResource createEclipseProject(String projectName, String projectToClone, String projectTemplateDirectoryName ) throws IOException {
+		IVResource project = createProject(projectName, projectToClone, projectTemplateDirectoryName, "WebContent", true);
 		/*
 		 * Load the initial user files extension point and copy the files to the projects root
 		 */
@@ -187,13 +127,13 @@ public class User implements IUser {
            	String filePath = (String)key;
            	String xml = (String)eclipseConfig.get(key);
            	IPath resourcePath = new Path(project.getPath()).append(filePath);
-           	IVResource resource = this.createResource(resourcePath.toString());
+           	IVResource resource = this.createResource(resourcePath.toString(), false);
            	
            	VResourceUtils.setText(resource, xml);
            	
           }
         /* modify the library settings with the WebContent folder */
-       Library[] allLibs = ServerManager.getServerManger().getLibraryManager().getAllLibraries();
+       Library[] allLibs = ServerManager.getServerManager().getLibraryManager().getAllLibraries();
         
         for(int i=0;i<allLibs.length;i++){
         	Library lib = allLibs[i];
@@ -201,8 +141,9 @@ public class User implements IUser {
         	if(root!=null){
         		String id= lib.getID();
             	String version = lib.getVersion();
+            	String required = lib.getRequired();
             	String libPath = "./WebContent" + root;
-        		this.modifyLibrary(id, version,  libPath, project.getPath());
+        		this.modifyLibrary(id, version,  libPath, project.getPath(), required==null?false:Boolean.parseBoolean(required));
         	}
         }
         
@@ -210,21 +151,22 @@ public class User implements IUser {
 		return project;
 	}
 	
-	
-	
-	
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#createProject(java.lang.String)
 	 */
-	public IVResource createProject(String projectName){
-		return this.createProject(projectName, "", true);
+	public IVResource createProject(String projectName) throws IOException {
+		return this.createProject(projectName, "", "", "", true);
+	}
+	public IVResource createProject(String projectName, String projectToClone, String projectTemplateDirectoryName) throws IOException {
+		return this.createProject(projectName, projectToClone, projectTemplateDirectoryName, "", true);
 	}
 	
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#createProject(java.lang.String, java.lang.String, boolean)
 	 */
-	public IVResource createProject(String projectName, String basePath, boolean initFiles){
-		IVResource project = createResource(projectName + "/");
+	public IVResource createProject(String projectName, String projectToClone, String projectTemplateName, 
+			String basePath, boolean initFiles) throws IOException {
+		IVResource project = createResource(projectName + "/", true);
 		/*
 		 * Load the initial user files extension point and copy the files to the projects root
 		 */
@@ -240,7 +182,7 @@ public class User implements IUser {
 			
 		
 		if(initFiles){
-			List extensions = ServerManager.getServerManger().getExtensions(IDavinciServerConstants.EXTENSION_POINT_INITIAL_USER_FILES,
+			List extensions = ServerManager.getServerManager().getExtensions(IDavinciServerConstants.EXTENSION_POINT_INITIAL_USER_FILES,
 	                IDavinciServerConstants.EP_TAG_INITIAL_USER_FILE);
 	        for (Iterator iterator = extensions.iterator(); iterator.hasNext();) {
 	            IConfigurationElement libraryElement = (IConfigurationElement) iterator.next();
@@ -263,6 +205,7 @@ public class User implements IUser {
         rebuildWorkspace();
 		return project;
 	}
+
 	/*
 	 * adds configuration settings for a new path
 	 * 
@@ -271,7 +214,7 @@ public class User implements IUser {
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#addBaseSettings(java.lang.String)
 	 */
-	public void addBaseSettings(String base){
+	public void addBaseSettings(String base) throws IOException {
 		IStorage baseFile = userDirectory.newInstance(this.userDirectory, base);
 		if(!isValid(baseFile.getAbsolutePath())) return;
 		IStorage settings = userDirectory.newInstance(baseFile, IDavinciServerConstants.SETTINGS_DIRECTORY_NAME);
@@ -312,15 +255,15 @@ public class User implements IUser {
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#modifyLibrary(java.lang.String, java.lang.String, java.lang.String, boolean)
 	 */
-	public void modifyLibrary(String id, String version, String base, boolean installed) {
+	public void modifyLibrary(String id, String version, String base, boolean installed, boolean required) throws IOException {
 		LibrarySettings libs = this.getLibSettings(base);
 
 		if (!installed) {
 			libs.removeLibrary(id, version, base);
 
 		} else {
-			String defaultRoot = ServerManager.getServerManger().getLibraryManager().getDefaultRoot(id, version);
-			libs.addLibrary(id, version, id, defaultRoot);
+			String defaultRoot = ServerManager.getServerManager().getLibraryManager().getDefaultRoot(id, version);
+			libs.addLibrary(id, version, id, defaultRoot, required?"true":"false");
 		}
 		
 		ILibraryFinder[] finders = this.getFinders(base);
@@ -334,10 +277,10 @@ public class User implements IUser {
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#modifyLibrary(java.lang.String, java.lang.String, java.lang.String, java.lang.String)
 	 */
-	public void modifyLibrary(String id, String version, String virtualRoot, String base) {
+	public void modifyLibrary(String id, String version, String virtualRoot, String base, boolean required) throws IOException {
 		LibrarySettings libs = this.getLibSettings(base);
 
-		libs.modifyLibrary(id, version, virtualRoot, base);
+		libs.modifyLibrary(id, version, virtualRoot, base, required?"true":"false");
 		ILibraryFinder[] finders = this.getFinders(base);
 		for(int i=0;i<finders.length;i++){
 			finders[i].librarySettingsChanged(libs.allLibs());
@@ -387,12 +330,18 @@ public class User implements IUser {
 
 	}
 
-	private void findLibFiles(IPath path, ArrayList results) {
+	protected void findLibFiles(IPath path, ArrayList results) {
 	
 		IVResource[] result = this.workspace.find(path.toString());
-
+		/* make sure that we dont add library files that already exist in the file system */
 		for (int i = 0; i < result.length; i++) {
-			results.add(result[i]);
+			boolean existing = false;
+			for(int z=0;z<results.size() && !existing;z++){
+				if(((IVResource)results.get(z)).getPath().equals(result[i].getPath()))
+					existing = true;
+			}
+			if(!existing)
+				results.add(result[i]);
 		}
 	}
 
@@ -415,12 +364,6 @@ public class User implements IUser {
         return getLibFile(path);
     }
 
-	protected Library getLibrary(ILibInfo li) {
-		String id = li.getId();
-		String version = li.getVersion();
-		return ServerManager.getServerManger().getLibraryManager().getLibrary(id, version);
-
-	}
 
 	protected IVResource getLibFile(String p1) {
 		IPath path = new Path(p1);
@@ -463,7 +406,7 @@ public class User implements IUser {
 	 protected IVResource getUserFile(String p1) {
 	       
 	        String path = p1;
-	        while(path.length()>0 && (path.charAt(0)=='.' || path.charAt(0)=='/' || path.charAt(0)=='\\'))
+	        while(path.length()>0 && (path.indexOf(".//")==0 || path.charAt(0)=='/' || path.charAt(0)=='\\'))
             	path=path.substring(1);
 
 	        IPath a = new Path(this.userDirectory.getAbsolutePath()).append(path);
@@ -506,7 +449,7 @@ public class User implements IUser {
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#createResource(java.lang.String)
 	 */
-	public IVResource createResource(String path) {
+	public IVResource createResource(String path, boolean isFolder) throws IOException {
 		/* serve working copy files if they exist */
 
 		String path1 = path;
@@ -537,14 +480,14 @@ public class User implements IUser {
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#getWorkbenchSettings()
 	 */
-	public IStorage getWorkbenchSettings() {
+	public IStorage getWorkbenchSettings() throws IOException {
 		return getWorkbenchSettings("");
 	}
 
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#getWorkbenchSettings(java.lang.String)
 	 */
-	public IStorage getWorkbenchSettings(String base) {
+	public IStorage getWorkbenchSettings(String base) throws IOException {
 	
 		
 		IStorage baseFile = userDirectory.newInstance(this.userDirectory,base);
@@ -586,74 +529,17 @@ public class User implements IUser {
 
 		// Links links = this.getLinks();
 		if (isWildcard) {
-			IOFileFilter filter;
-			if (path.segment(0).equals("*")) {
-				IOCase ioCase = ignoreCase ? IOCase.INSENSITIVE		: IOCase.SENSITIVE;
-				filter = new NameFileFilter(path.lastSegment(), ioCase);
-			} else {
-				String lastSegment = path.lastSegment();
-				if (lastSegment.startsWith("*")) {
-					filter = new SuffixFileFilter(lastSegment.substring(1));
-				} else {
-					filter = null;
-				}
-			}
-			// big todo here, have to remove the file filter
-			
-			IStorage f1 = null; 
-		    if (startFolder == null || startFolder.equals(".")) {
-		          f1 = this.userDirectory;
-		     } else {
-		         IVResource start = this.getUserFile(startFolder);
-		         if(start!=null)
-    		         try {
-    		            f1 = this.userDirectory.newInstance(start.getURI());
-                    } catch (URISyntaxException e) {
-                        e.printStackTrace();
-                    }
-		     }
-		    if(f1!=null){
-    			Collection c = this.userDirectory.findFiles(f1, pathStr,ignoreCase);
-    			File[] found = (File[]) c.toArray(new File[c.size()]);
-    			for (int i = 0; i < found.length; i++) {
-    					IStorage workspaceFile = null;
-    					workspaceFile = this.userDirectory;
-    
-    					IPath workspacePath = new Path(workspaceFile.getPath());
-    					IPath foundPath = new Path(found[i].getPath());
-    					IPath elementPath = foundPath.makeRelativeTo(workspacePath);
-    					if(!isValid(foundPath.toString())) return null;
-    					
-    					IVResource[] wsFound = this.findFiles(elementPath.toString(), ignoreCase, true);
-    					results.addAll(Arrays.asList(wsFound));
-    
-    			}
+			IVResource start = null;
+			if (startFolder == null || startFolder.equals(".")) {
+		          start = this.workspace;
+		    } else {
+		         start = this.getResource(startFolder);
 		    }
-			/*
-			ILink[] allLinks = links.allLinks();
-			for (int i = 0; i < allLinks.length; i++) {
-				File file = new File(allLinks[i].location);
-				Collection c = FileUtils.listFiles(file, filter, TrueFileFilter.INSTANCE);
-				File[] found = (File[]) c.toArray(new File[c.size()]);
-
-				for (int p = 0; p < found.length; p++) {
-					IPath workspacePath = new Path(this.getUserDirectory()
-							.getPath());
-					IPath foundPath = new Path(found[p].getPath());
-					IPath elementPath = foundPath.makeRelativeTo(workspacePath);
-
-					IVResource[] wsFound = this.findFiles(
-							elementPath.toString(), ignoreCase, true);
-					results.addAll(Arrays.asList(wsFound));
-
-				}
-
-			}
-			*/
-			if (!workspaceOnly) {
-				this.findLibFiles(path, results);
-
-			}
+			
+			results.addAll(Arrays.asList((start.find(pathStr))));
+			
+			
+			
 		} else {
 			IVResource file = this.getResource(pathStr);
 			if (file != null && file.exists()) {
@@ -661,6 +547,26 @@ public class User implements IUser {
 			}
 
 		}
+		/* search the libraries */
+		
+		if (!workspaceOnly) {
+			IPath fullPath = new Path(startFolder).append(pathStr);
+			findLibFiles(fullPath, results);
+		}
+		
+		
+		ArrayList filtered = new ArrayList();
+		
+		if (workspaceOnly) {
+			// need to filter out library entries here in case some got through (mixed directories)
+			for(int z=0;z<results.size();z++){
+				if(!(results.get(z) instanceof VLibraryResource)){
+					filtered.add(results.get(z));
+				}
+			}
+			results = filtered;
+		}
+		
 		return (IVResource[]) results.toArray(new IVResource[results.size()]);
 
 	}
@@ -673,7 +579,22 @@ public class User implements IUser {
 		Vector<ILibInfo> allLibs = new Vector();
 		allLibs.addAll(Arrays.asList(this.getLibSettings(base).allLibs()));
 		
-		allLibs.addAll(Arrays.asList(this.getExtendedSettings(base)));
+		/* need to make sure we're not already mapping librarys with the same ID and Version in the workspace.  If so, remove them and let the 
+		 * library from the finder take precidence. 
+		 */
+		ILibInfo extendLibs[] = this.getExtendedSettings(base);
+		for(int z=0;z<allLibs.size();z++){
+			ILibInfo library = allLibs.get(z);
+			for(int f=0;f<extendLibs.length;f++){
+				if(library.getId().equals(extendLibs[f].getId()) && library.getVersion().equals(extendLibs[f].getVersion()) ){
+					allLibs.remove(z);
+				}
+			}
+		}
+		
+		
+		
+		allLibs.addAll(Arrays.asList(extendLibs));
 		return (ILibInfo[]) allLibs.toArray(new ILibInfo[allLibs.size()]);
 		
 	}
@@ -702,8 +623,8 @@ public class User implements IUser {
 	/* (non-Javadoc)
 	 * @see org.davinci.server.user.IUser#getUserName()
 	 */
-	public String getUserName() {
-		return this.person.getUserName();
+	public String getUserID() {
+		return this.person.getUserID();
 	}
 
 	/* (non-Javadoc)
@@ -712,5 +633,48 @@ public class User implements IUser {
 	public IPerson getPerson() {
 		return this.person;
 	}
+	
+	// Following routines are used by OrionUser.java
+	
+	public void copyDirectory(IStorage sourceDir, IStorage destinationDir) throws IOException {
+		destinationDir.mkdirs();
+		IStorage[] file = sourceDir.listFiles();
+		for (int i = 0; i < file.length; i++) {
+			if (file[i].isFile()) {
+				IStorage sourceFile = file[i];
+
+				IStorage targetFile = destinationDir.newInstance(destinationDir, file[i].getName());
+				copyFile(sourceFile, targetFile);
+			}
+
+			if (file[i].isDirectory()) {
+				IStorage destination = destinationDir.newInstance(destinationDir, file[i].getName());
+				copyDirectory(file[i], destination);
+			}
+		}
+	}
+
+	public void copyFile(IStorage source, IStorage destination) throws IOException {
+		InputStream in = null;
+		OutputStream out = null;
+		try {
+			destination.getParentFile().mkdirs();
+			in = source.getInputStream();
+			out = destination.getOutputStream();
+			byte[] buf = new byte[1024];
+			int len;
+			while ((len = in.read(buf)) > 0) {
+				out.write(buf, 0, len);
+			}
+		} finally {
+			if (in != null) {
+				in.close();
+			}
+			if (out != null) {
+				out.close();
+			}
+		}
+	}
+
 
 }

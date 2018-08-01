@@ -35,8 +35,13 @@
 		"src": {
 			"datatype": "string",
 			"format": "url",
-			"description": "Specifies the URL of the audio file"
+			"description": "Specifies the URL of the audio file",
+			"hidden": "true"
 		}		
 	},
-	"content": "<audio></audio>"
+	"content": "<audio></audio>",
+	"title": {
+		"type": "text/html",
+		"value": "<p>An HTML audio element represents a sound or audio stream.</p>"
+	}
 }

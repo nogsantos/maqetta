@@ -14,20 +14,24 @@ return declare("davinci.commands.CommandStack", null, {
 
 	execute: function(command){
 		// summary:
-		//		Runs the specified command, records the exeution state in the undo history, and clears the redo buffer.
+		//		Runs the specified command, records the execution state in the undo history, and clears the redo buffer.
 		if(!command){
 			return;
 		}
 
-		if (this._context && (this._context.declaredClass != 'davinci.themeEditor.Context' && this._context.declaredClass != 'davinci.ve.themeEditor.Context'))
+		var quietExecute;
+		if (this._context && this._context.declaredClass != 'davinci.ve.themeEditor.Context') {
 			// changing doc root causes problems with Style palette  
-			dojo.withDoc(this._context.getDocument(), "execute", command,[this._context]);
-		else
-		  command.execute();
+			quietExecute = dojo.withDoc(this._context.getDocument(), "execute", command, [this._context]);
+		} else {
+			quietExecute = command.execute();
+		}
 		this._undoStack.push(command);
 		this._redoStack = [];
 
-		this.onExecute(command, "execute");
+		if (!quietExecute) {
+			this.onExecute(command, "execute");			
+		}
 	},
 
 	undo: function(){
@@ -38,15 +42,15 @@ return declare("davinci.commands.CommandStack", null, {
 		}
 
 		var command = this._undoStack.pop();
-		if (command._runDelegate)
+		if (command._runDelegate) {
 			command._runDelegate.undoDelegate(command);
-		else
-		{
-			if (this._context && (this._context.declaredClass != 'davinci.themeEditor.Context' && this._context.declaredClass != 'davinci.ve.themeEditor.Context'))
+		} else {
+			if (this._context && this._context.declaredClass != 'davinci.ve.themeEditor.Context') {
 			 //changing doc root causes problems with Style palette 
 				dojo.withDoc(this._context.getDocument(), "undo", command);
-			else
+			} else {
 			  command.undo();
+			}
 		}
 		this._redoStack.push(command);
 
@@ -61,15 +65,15 @@ return declare("davinci.commands.CommandStack", null, {
 		}
 
 		var command = this._redoStack.pop();
-		if (command._runDelegate)
+		if (command._runDelegate) {
 			command._runDelegate.redoDelegate(command);
-		else
-		{
-			if (this._context && (this._context.declaredClass != 'davinci.themeEditor.Context' && this._context.declaredClass != 'davinci.ve.themeEditor.Context'))
+		} else {
+			if (this._context && this._context.declaredClass != 'davinci.ve.themeEditor.Context') {
 				// changing doc root causes problems with Style palette 
 				dojo.withDoc(this._context.getDocument(), "execute", command);
-			else
+			} else {
 			  command.execute();
+			}
 		}
 
 		this._undoStack.push(command);
@@ -80,13 +84,13 @@ return declare("davinci.commands.CommandStack", null, {
 	canUndo: function(){
 		// summary:
 		//		Returns true if there are any commands that have been executed that can be undone, false otherwise
-		return (this._undoStack.length > 0);
+		return this._undoStack.length > 0;
 	},
 
 	canRedo: function(){
 		// summary:
 		//		Returns true if there are any commands that have been undone that can be redone, false otherwise.
-		return (this._redoStack.length > 0);
+		return this._redoStack.length > 0;
 	},
 
 	getUndoCount: function(){
@@ -152,14 +156,10 @@ return declare("davinci.commands.CommandStack", null, {
 	onExecute: function(command, reason){
 	},
 
-	undoDelegate : function(command)
-	{
-		
+	undoDelegate: function(command) {
 	},
 
-	redoDelegate : function(command)
-	{
-		
+	redoDelegate: function(command) {
 	}
 });
 });

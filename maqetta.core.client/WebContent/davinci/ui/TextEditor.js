@@ -1,14 +1,14 @@
-define(["dojo/_base/declare", "davinci/ui/Editor"], function(declare, Editor) {
+define(["dojo/_base/declare", "./Editor", "../Runtime"], function(declare, Editor, Runtime) {
 
-return declare("davinci.ui.TextEditor", Editor, {
+return declare(Editor, {
 	
-	constructor: function (element) {
+	constructor: function (element, fileName) {
 		this.subscriptions=[];
 		this._handles=[];
 	},
 	
 	isActiveEditor: function() {
-		return davinci.Runtime.currentEditor == this;
+		return Runtime.currentEditor == this;
 	},
 
 	supports: function (something) {

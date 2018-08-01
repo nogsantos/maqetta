@@ -13,6 +13,8 @@ define(["dojo/_base/declare",
 		templateString: templateString,
 		_okButton: null,
 		_dijitName : null,
+		_widgetGroup: null,
+		_replaceSelection : null,
 		
 		postMixInProperties : function() {
 			this.inherited(arguments);
@@ -21,6 +23,7 @@ define(["dojo/_base/declare",
 		postCreate : function(){
 			this.inherited(arguments);
 			dojo.connect(this._dijitName, "onkeyup", this, '_checkValid');
+			
 			
 		},
 		
@@ -33,16 +36,16 @@ define(["dojo/_base/declare",
 		},
 		
 		okButton : function(){
-			this.value = dojo.attr(this._dijitName, "value");
-			this.onClose();
-		},
-		
-	
+			this.value = {'name': dojo.attr(this._dijitName, "value"), 
+					     //'group':dojo.attr(this._widgetGroup, "value"),
+					     'replaceSelection':dojo.attr(this._replaceSelection, "checked")};
+		},	
 		
 		_getValueAttr : function(){
 			return this.value;
 		},
 		cancelButton: function(){
+			this.cancel = true;
 			this.onClose();
 		},
 	

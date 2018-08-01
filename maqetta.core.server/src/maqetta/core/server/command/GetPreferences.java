@@ -2,8 +2,6 @@ package maqetta.core.server.command;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -24,6 +22,7 @@ public class GetPreferences extends Command {
         
         IStorage userSettings = user.getWorkbenchSettings(base);
         IStorage settingsFile = userSettings.newInstance(userSettings, path + IDavinciServerConstants.SETTINGS_EXTENSION);
+		
         if(!user.isValid(settingsFile.getAbsolutePath()) ) return;
         
         
@@ -35,7 +34,7 @@ public class GetPreferences extends Command {
             inputStream = new ByteArrayInputStream("".getBytes());
         }
         Command.transferStreams(inputStream, resp.getOutputStream(), true);
-
+        resp.setContentType("application/json;charset=UTF-8");
     }
 
 }

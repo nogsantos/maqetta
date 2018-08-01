@@ -1,10 +1,12 @@
 define([
 	"dojo/_base/declare",
+	"davinci/Runtime",
 	"davinci/ve/input/SmartInput",
 	"davinci/ve/commands/ModifyCommand",
 	"dojo/i18n!./nls/html"
 ], function(
 	declare,
+	Runtime,
 	SmartInput,
 	ModifyCommand,
 	htmlNls
@@ -146,11 +148,12 @@ return declare(SmartInput, {
 	},
 	
 	_createOption: function(value, text, selected) {
+		
 		return {
 			type: "html.option",
 			properties: {
 				value: value,
-				selected: selected
+				selected: selected ? true : null
 			},
 			children: text || value
 		};
@@ -166,7 +169,7 @@ return declare(SmartInput, {
 	},
 	
 	_getEditor: function() {
-		return top.davinci && top.davinci.Runtime && top.davinci.Runtime.currentEditor;
+		return Runtime.currentEditor;
 	},
 	
 	_getContext: function() {

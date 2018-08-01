@@ -7,6 +7,9 @@ body {
 	font-size:90%;
 	text-align:center;
 }
+.intro {
+	margin-top: 1em;
+}
 .test_title {
 	color:#003;
 	text-align:center;
@@ -42,4 +45,18 @@ pre {
 	border:solid 1px black;
 	margin-left:1em;
 	padding:.75em;
+}
+
+.toc {
+	line-height: 130%;
+}
+
+.toc a {
+	text-decoration: none;
+}
+
+.automatedTestCase {
+	font-weight:bold;
+	color: red;
+	font-style:italic;
 }

@@ -1,10 +1,15 @@
 package maqetta.core.server.command;
 
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.SimpleTimeZone;
+import java.util.logging.Logger;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -20,82 +25,96 @@ import org.davinci.server.review.cache.ReviewCacheManager;
 import org.davinci.server.review.user.IDesignerUser;
 import org.davinci.server.user.IUser;
 import org.davinci.server.user.IUserManager;
+import org.davinci.server.user.UserException;
+import org.eclipse.orion.server.useradmin.UserEmailUtil;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.maqetta.server.Command;
 import org.maqetta.server.IDavinciServerConstants;
 import org.maqetta.server.ServerManager;
-import org.maqetta.server.mail.SimpleMessage;
-import org.maqetta.server.mail.SmtpPop3Mailer;
 
+@SuppressWarnings("restriction")
 public class AddComment extends Command {
+
+	static final private Logger theLogger = Logger.getLogger(AddComment.class.getName());
 
 	@Override
 	public void handleCommand(HttpServletRequest req, HttpServletResponse resp, IUser user)
 			throws IOException {
+		Comment comment = extractComment(req);
+		
+		IUserManager userManager = ServerManager.getServerManager().getUserManager();
+		String designerName = comment.getDesignerId();
+		IUser designer = null;
 		try {
-			Comment comment = extractComment(req);
-			
-			IUserManager userManager = ServerManager.getServerManger().getUserManager();
-			String designerName = comment.getDesignerId();
-			IUser designer = null;
 			if(ServerManager.LOCAL_INSTALL && IDavinciServerConstants.LOCAL_INSTALL_USER.equalsIgnoreCase(designerName)) {
 				designer = userManager.getUser(IDavinciServerConstants.LOCAL_INSTALL_USER);
 			} else {
 				designer = userManager.getUser(designerName);
 			}
-			
-			//Set up project based on designer
-			DavinciProject project = new DavinciProject();
-			project.setOwnerId(designer.getUserName());
-			comment.setProject(project);
-
-			comment.setEmail(user.getPerson().getEmail());
-
-			IDesignerUser du = ReviewManager.getReviewManager()
-					.getDesignerUser(designerName);
-			Version version = du.getVersion(comment.getPageVersion());
-
-			if (version != null && version.isClosed()){
-				throw new Exception("The version is closed by others during your editting. Please reload the review data.");
-			}
-			List<Comment> commentList = new ArrayList<Comment>(1);
-			commentList.add(comment);
-			ReviewCacheManager.$.updateComments(commentList, false);
-
-			if (version != null && version.isReceiveEmail()) // Send the notification only the designer want receive it.
-				notifyRelatedPersons(user, designer, comment);
-
-			responseString = "{id:'" + comment.getId() + "',created:"
-					+ comment.getCreated().getTime() /*+ ",order:'" + comment.getOrder()
-					+ "'*/ + ",email:'" + user.getPerson().getEmail() + "',reviewer:'" + user.getUserName()
-					+ "'}";
-		} catch (Exception e) {
-			e.printStackTrace();
-			errorString = "The review is not added successfully. Reason: " + e.getMessage();
-			//resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, errorString);
+		} catch (UserException e) {
+			errorString = "Failure getting user for 'designer'. Reason: " + e.getMessage();
+			theLogger.severe((String) errorString);
+			return;
 		}
+		
+		//Set up project based on designer
+		DavinciProject project = new DavinciProject();
+		project.setOwnerId(designer.getUserID());
+		comment.setProject(project);
+
+		comment.setEmail(user.getPerson().getEmail());
+
+		IDesignerUser du = ReviewManager.getReviewManager()
+				.getDesignerUser(designerName);
+		Version version = du.getVersion(comment.getPageVersion());
+
+		if (version != null && version.isClosed()){
+			errorString = "The version was closed by another user while editing. Please reload the review data.";
+			return;
+		}
+		List<Comment> commentList = new ArrayList<Comment>(1);
+		commentList.add(comment);
+		ReviewCacheManager.$.updateComments(commentList);
+
+		String emailResult = null;
+		if (version != null && version.isReceiveEmail()) { // Send the notification only the designer want receive it.
+			Boolean zazl = req.getParameter("zazl") != null;
+			emailResult = notifyRelatedPersons(user, designer, comment, req, zazl);
+		}
+
+		SimpleDateFormat sdf = new SimpleDateFormat(Constants.DATE_PATTERN);
+		sdf.setCalendar(Calendar.getInstance(new SimpleTimeZone(0, "GMT")));
+		try {
+			JSONObject json = new JSONObject()
+					.put("id", comment.getId())
+					.put("created", sdf.format(comment.getCreated()))
+//						.put("order", comment.getOrder())
+					.put("email", user.getPerson().getEmail())
+					.put("reviewer", user.getUserID());
+			if (emailResult != null) {
+				json.put("emailResult", emailResult);
+			}
+			responseString = json.toString();
+		} catch (JSONException e) { /*ignore*/ }
 	}
 
-	protected void notifyRelatedPersons(IUser reviewer, IUser designer, Comment comment) {
+	protected String notifyRelatedPersons(IUser reviewer, IUser designer, Comment comment,
+			HttpServletRequest req, Boolean zazl) {
 		String to = designer.getPerson().getEmail();
 		if (to != null && !to.trim().equals("")) {
-			String htmlContent = getHtmlContent(reviewer, comment);
-			SimpleMessage email = new SimpleMessage(Utils.getCommonNotificationId(),
-					designer.getPerson().getEmail(), null, null, Utils.getTemplates().getProperty(Constants.TEMPLATE_COMMENT_NOTIFICATION_SUBJECT),
-					htmlContent);
-//			SmtpPop3Mailer.send(email);
+			String subject = Utils.getTemplates().getProperty(Constants.TEMPLATE_COMMENT_NOTIFICATION_SUBJECT);
+			String htmlContent = getHtmlContent(reviewer, comment, req.getRequestURL().toString(), zazl);
 			try {
-				SmtpPop3Mailer mailer = SmtpPop3Mailer.getDefault();
-				if(mailer != null){
-					mailer.sendMessage(email);
-				}else{
-					this.responseString = "Failed to send mail to users. "+"Mail server is not configured. Mail notificatioin is cancelled.";
-					System.out.println("Mail server is not configured. Mail notificatioin is cancelled.");
-				}
+				UserEmailUtil.getUtil().sendEmail(subject, htmlContent, to);
 			} catch (Exception e) {
-				this.responseString = "Failed to send mail to users. "+e.getMessage();
-				e.printStackTrace();
+				// Email server not reachable or not configured. Return email contents to client.
+				// Note: We do not return an error on the request since sending an email notification
+				// is a secondary goal; the primary goal is to add a new comment.
+				return htmlContent;
 			}
 		}
+		return "OK";
 	}
 
 //	private static String unescape(String str) {
@@ -132,7 +151,7 @@ public class AddComment extends Command {
 //		return str;
 //	}
 
-	private String getHtmlContent(IUser reviewer, Comment comment) {
+	private String getHtmlContent(IUser reviewer, Comment comment, String requestUrl, Boolean zazl) {
 		String commentTitle = comment.getSubject();;
 		String pageName = comment.getPageName();
 		
@@ -142,18 +161,18 @@ public class AddComment extends Command {
 		}
 
 		Map<String, String> props = new HashMap<String, String>();
-		props.put("username", reviewer.getUserName());
+		props.put("displayName", reviewer.getPerson().getDisplayName());
 		props.put("pagename", pageName);
+		props.put("url", ReviewManager.getReviewManager().getReviewUrl(comment.getDesignerId(), comment.getPageVersion(),  requestUrl, zazl)); 
 		props.put("title", commentTitle);
-		props.put("type", comment.getType());
-		props.put("severity", comment.getSeverity());
-		props.put("status", comment.getStatus());
 		props.put("content", comment.getContent());
 		props.put("pagestate", comment.getPageState());
+		props.put("pagestatelist", comment.getPageStateList());
 		props.put("viewscene", comment.getViewScene());
+		props.put("viewscenelist", comment.getViewSceneList());
 		props.put("time", comment.getCreated().toString());
 		
-		return Utils.substitude(Utils.getTemplates().getProperty(Constants.TEMPLATE_COMMENT), props);
+		return Utils.substitute(Utils.getTemplates().getProperty(Constants.TEMPLATE_COMMENT), props);
 	}
 
 	protected Comment extractComment(HttpServletRequest req) {
@@ -181,8 +200,14 @@ public class AddComment extends Command {
 		paramValue = req.getParameter(Comment.PAGE_STATE);
 		comment.setPageState(paramValue);
 
+		paramValue = req.getParameter(Comment.PAGE_STATE_LIST);
+		comment.setPageStateList(paramValue);
+
 		paramValue = req.getParameter(Comment.VIEW_SCENE);
 		comment.setViewScene(paramValue);
+
+		paramValue = req.getParameter(Comment.VIEW_SCENE_LIST);
+		comment.setViewSceneList(paramValue);
 
 		paramValue = req.getParameter(Comment.SUBJECT);
 		comment.setSubject(paramValue);
@@ -202,16 +227,7 @@ public class AddComment extends Command {
 		paramValue = req.getParameter(Comment.DRAWING_JSON);
 		comment.setDrawingJson(paramValue);
 
-		paramValue = req.getParameter(Comment.SEVERITY);
-		comment.setSeverity(paramValue);
-
-		paramValue = req.getParameter(Comment.TYPE);
-		comment.setType(paramValue);
-
-		paramValue = req.getParameter(Comment.STATUS);
-		comment.setStatus(paramValue);
-
-		comment.setCreated(Utils.getCurrentDateInGmt0());
+		comment.setCreated(new Date());
 
 		return comment;
 	}

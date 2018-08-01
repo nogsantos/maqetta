@@ -1,5 +1,6 @@
 define([
 	"dojo/_base/declare",
+	"dojo/dom-geometry",
 	"davinci/ve/commands/ModifyRichTextCommand",
 	"dijit/layout/ContentPane",
 	"dijit/form/SimpleTextarea",
@@ -9,7 +10,7 @@ define([
 	"dojox/layout/ResizeHandle",
 	"dojo/i18n!davinci/ve/nls/ve",
 	"dojo/i18n!dijit/nls/common"
-], function(declare, ModifyRichTextCommand, ContentPane, SimpleTextarea, TextBox, entities, ellipsis, ResizeHandle, veNls, commonNls){
+], function(declare, domGeometry, ModifyRichTextCommand, ContentPane, SimpleTextarea, TextBox, entities, ellipsis, ResizeHandle, veNls, commonNls){
 
 	// temporary workaround for nls.  the i18n dependencies aren't loading properly
 //	veNls = dojo.i18n.getLocalization("davinci.ve","ve");
@@ -329,7 +330,7 @@ return declare("davinci.ve.input.SmartInput", null, {
 		if (property) {
 			if (node) {
 				value = dojo.attr(node, djprop);
-			} else if (djprop === "innerHTML"){
+			} else if (djprop === "innerHTML" || djprop == "textContent"){
 				value = this._widget._srcElement.getElementText(this._context); // wdr
 				// Collapse all white space before showing content
 				value = value.replace(/\s+/g,' ');
@@ -362,10 +363,12 @@ return declare("davinci.ve.input.SmartInput", null, {
 
 		this._inline.eb = dijit.byId("davinciIleb");
 		this._connection.push(dojo.connect(this._inline.eb, "onMouseDown", this, "stopEvent"));
-		this._connection.push(dojo.connect(this._inline.eb, "onKeyDown", this, "stopEvent"));
+		this._connection.push(dojo.connect(this._inline.eb, "onKeyDown", this, "stopEvent_Intercept_Enter"));
 		this._connection.push(dojo.connect(this._inline.eb, "onKeyUp", this, "handleEvent"));
-		if (this.multiLine == "true"){
-			this._connection.push(dojo.connect(this._inline.eb, "onBlur", this, "onBlur")); 
+		if (this.multiLine == "true"){                                  
+/*FIXME: TO DIRECT TO PROPS PALETTE, NEED TO DISABLE */
+			this._connection.push(dojo.connect(this._inline.eb, "onBlur", this, "onBlur"));
+/*ENDFIXME*/
 			this._connectSimDiv();
 
 		}
@@ -377,7 +380,34 @@ return declare("davinci.ve.input.SmartInput", null, {
 		this._inline._setStyleAttr({display: "block"});
 		this._connectHelpDiv();
 		this._connectResizeHandle();
-		this._connection.push(dojo.connect(this._inline, "onBlur", this, "onOk")); //comment out for debug
+		/* 
+		 * dijit/focus._onBlurNode is setting a setTimeout to deal with OnBlur events.
+		 * 
+		   // if the blur event isn't followed by a focus event then mark all widgets as inactive.
+			if(this._clearActiveWidgetsTimer){
+				clearTimeout(this._clearActiveWidgetsTimer);
+			}
+			this._clearActiveWidgetsTimer = setTimeout(lang.hitch(this, function(){
+				delete this._clearActiveWidgetsTimer;
+				this._setStack([]);
+				this.prevNode = null;
+			}), 100);
+          * 
+          *  SmartInput is setting the focus on the smart input widget box so when the dijit.focus
+          *  setTimeout fires the _setStack changes the focus, fire our onBlur closing the edit box.
+          *  This only seems to be an issue for SackContainerInput and mostly for Accordion.
+          *  So I added the timeout below to wait until after the diji.focus has fired.
+          *  FIXME: There must be a better solution than this!
+		 */
+		
+		window.setTimeout(function(){
+			if(this._inline && this._inline.eb && this._inline.eb.textbox){
+				this._inline.eb.textbox.focus();
+			}
+/*FIXME: DISABLING FOR NOW */
+			this._connection.push(dojo.connect(this._inline, "onBlur", this, "onOk")); //comment out for debug
+/*ENDFIXME*/
+		}.bind(this), 500);
 		
 		this.resize(null);
 
@@ -387,16 +417,24 @@ return declare("davinci.ve.input.SmartInput", null, {
 	_connectHelpDiv: function(){
 		var help = dojo.byId('davinci.ve.input.SmartInput_img_help');
 		this._connection.push(dojo.connect(help, "onclick", this, "toggleHelp"));
-		this._connection.push(dojo.connect(dojo.byId('davinci.ve.input.SmartInput_ok'), "onclick", this, "onOk")); // same effect ad click away..
-		this._connection.push(dojo.connect(dojo.byId('davinci.ve.input.SmartInput_cancel'), "onclick", this, "onCancel")); // same effect ad click away..
+		// since the button is a submit button, we need to listen to _onSubmit as it is expecting a form widget
+		this._connection.push(dojo.connect(dijit.byId('davinci.ve.input.SmartInput_ok'), "_onSubmit", this, "onOk")); // same effect ad click away..
+		this._connection.push(dojo.connect(dijit.byId('davinci.ve.input.SmartInput_cancel'), "onClick", this, "onCancel")); // same effect ad click away..
 	},
 	
-	_findContentPaneAncestor: function(frameNode){
-		var contentPaneAncestor = frameNode.parentNode;
-		while(!dojo.hasClass(contentPaneAncestor,'dijitContentPane')){
-			contentPaneAncestor = contentPaneAncestor.parentNode;
+	_findSmartInputContainer: function(frameNode){
+/*FIXME: With new design, put SmartInput onto BODY*/
+		return document.body;
+/*FIXME: TO DIRECT TO PROPS PALETTE, NEED TO DISABLE*/
+		var smartInputContainer = frameNode.parentNode;
+		while(!dojo.hasClass(smartInputContainer,'dijitContentPane')){
+			smartInputContainer = smartInputContainer.parentNode;
 		}
-		return contentPaneAncestor;
+		return smartInputContainer;
+/*ENDFIXME*/
+/*FIXME: TO DIRECT TO PROPS PALETTE, NEED TO ENABLE
+		return document.querySelector('.primaryPropertiesContainer') || document.body;
+*/
 	},
 	
 	_loading: function(height, width /*, styleHeight, styleWidth*/){
@@ -404,52 +442,68 @@ return declare("davinci.ve.input.SmartInput", null, {
 		var iframeNode = this._widget._edit_context.frameNode;
 		var doc = iframeNode.ownerDocument;
 		var loading = doc.createElement("div");
-		var contentPaneAncestor = this._findContentPaneAncestor(iframeNode);
-		if(!contentPaneAncestor){
+		var smartInputContainer = this._findSmartInputContainer(iframeNode);
+		if(!smartInputContainer){
 		//loading.innerHTML='<table><tr><td>'+langObj.loading+'</td></tr></table>';
 			return;
 		}
-		contentPaneAncestor.appendChild(loading);
+		smartInputContainer.appendChild(loading);
 		this._loadingDiv = loading;
+/*FIXME: TO DIRECT TO PROPS PALETTE, NEED TO DISABLE*/
 		dojo.addClass(loading,'smartInputLoading');
+/*ENDFIXME*/
 		var inline= doc.createElement("div");
 		inline.id = 'ieb';
+/*FIXME: TO DIRECT TO PROPS PALETTE, NEED TO DISABLE*/
 		dojo.addClass(inline,'inlineEdit dijitTooltipContainer');
+/*ENDFIXME*/
 		var inlinePointer = doc.createElement("div");
 		inlinePointer.id = 'iebPointer';
 		//dojo.addClass(inlinePointer,'inlineEditConnectorBelow');
 		this._inline = inline;
-		contentPaneAncestor.appendChild(inline);
-		contentPaneAncestor.appendChild(inlinePointer);
+		smartInputContainer.appendChild(inline);
+		smartInputContainer.appendChild(inlinePointer);
+/*FIXME: TO DIRECT TO PROPS PALETTE, NEED TO DISABLE*/
 		var m2 = new dojo.dnd.Moveable("ieb");
 		this._connection.push(dojo.connect(m2, "onMoveStart", this, "onMoveStart")); 
 		this._connection.push(dojo.connect(m2, "onMoveStop", this, "onMoveStop")); 
+/*ENDFIXME*/
 
 		var pFloatingPane = new ContentPane({}, inline);
 		
 		this._inline = pFloatingPane;
-		
+
+		// lets position the coverup
+		var veContentArea = dijit.byId("editorsStackContainer").domNode; 
+		var p = domGeometry.position(veContentArea);
+		this._loadingDiv.style.position = "absolute";
+		this._loadingDiv.style.left = p.x+"px";
+		this._loadingDiv.style.top = p.y+"px";
+		this._loadingDiv.style.width = p.w+"px";
+		this._loadingDiv.style.height = p.h+"px";
+
 		var box = this._widget.getMarginBox();
 		var iframe_box = dojo.position(iframeNode);
-		var contentPane_box = dojo.position(contentPaneAncestor);
+		var contentPane_box = dojo.position(smartInputContainer);
 		// Take into account iframe shifting due to mobile silhouettes
 		// The extra -1 needed to avoid extra pixel shift, probably for a border
-		var silhouette_shift_x = (iframe_box.x - contentPane_box.x) + contentPaneAncestor.scrollLeft - 1;
-		var silhouette_shift_y = (iframe_box.y - contentPane_box.y) + contentPaneAncestor.scrollTop - 1;
-		var clientHeight = contentPaneAncestor.clientHeight;
-		var clientWidth = contentPaneAncestor.clientWidth;
+		var silhouette_shift_x = (iframe_box.x - contentPane_box.x) + smartInputContainer.scrollLeft - 1;
+		var silhouette_shift_y = (iframe_box.y - contentPane_box.y) + smartInputContainer.scrollTop - 1;
+		var clientHeight = smartInputContainer.clientHeight;
+		var clientWidth = smartInputContainer.clientWidth;
         // find the correct placement of box  based on client viewable area
-		var top = '30';
+		var yOffset = 26;
+		var top = yOffset;
 		var pointerLocation = 0;
-		if ((box.y + height + 30) < clientHeight){
-			top = box.y /*box.t*/  +  30;
+		if ((box.y + height + yOffset) < clientHeight){
+			top = box.y /*box.t*/  +  yOffset;
 			dojo.addClass(inlinePointer,'inlineEditConnectorBelow');
-		}else if((box.y - height /*- 30*/) > 0){
-			top = box.y - height /*- 30 /*box.t*/ ;
+		}else if((box.y - height /*- yOffset*/) > 0){
+			top = box.y - height /*- yOffset /*box.t*/ ;
 			//dojo.addClass(inlinePointer,'inlineEditConnectorAbove');
 			pointerLocation = height + 12;
 		} else {
-			top = 0 /*box.t*/  + 30 ;
+			top = 0 /*box.t*/  + yOffset ;
 		}
 		var left = '0';
 ;
@@ -465,6 +519,7 @@ return declare("davinci.ve.input.SmartInput", null, {
 		} 
 		left += silhouette_shift_x;
 		top += silhouette_shift_y;
+		
 		this._inline._setStyleAttr({display: "block", /*backgroundColor: "red",*/ top: top + 'px', left: left + 'px',  padding:"1px", overflow: "hidden", backgroundImage: "none"}); // padding needed to keep scroll bars off
 		this._startTop = top;
 		this._startLeft = left;
@@ -477,21 +532,25 @@ return declare("davinci.ve.input.SmartInput", null, {
 	},
 	
 	handleEvent: function(event){
+		switch (event.keyCode) {
+			case 13: // enter
+				var multiLine = this.multiLine;
 
-	    switch (event.keyCode)
-	    {
-    	    case 13: // enter
-    	        var multiLine = this.multiLine;
-                if (!multiLine || multiLine == "false" || this._lastKeyCode == 13 || event.ctrlKey){ // back to back CR or CTRL+ENTER
-                    this.onOk();
-                }
-                break;
-    	    case 27: // ESC
-    	        this.onCancel();
-    	        break;
-    	    default:
-    	        this.updateFormats();
-	    }
+				if (!multiLine || multiLine == "false" || this._lastKeyCode == 13 || event.ctrlKey) {
+					this.onOk();
+				} else if (event.which == dojo.keys.ENTER && event.ctrlKey) {
+					this.onOk();
+				}
+				break;
+
+			case 27: // ESC
+				this.onCancel();
+				break;
+
+			default:
+				this.updateFormats();
+		}
+
 		this._lastKeyCode = event.keyCode;
 		this.updateSimStyle();
 	},
@@ -552,6 +611,15 @@ return declare("davinci.ve.input.SmartInput", null, {
 		this.updateSimStyle();
 	},
 	
+	stopEvent_Intercept_Enter: function(e){
+		this.stopEvent(e);
+		// For single-line SmartInput, don't let Enter key
+		// wipe out the currently selected text input
+		if(e.keyCode == 13 && !this.multiLine){
+			e.preventDefault();
+		}
+	},
+	
 	
 	_node: function() {
 		var node;
@@ -606,7 +674,14 @@ return declare("davinci.ve.input.SmartInput", null, {
 					if (value && (typeof value == 'string')){
 						value = value.replace(/\n/g, ''); // new lines breaks create widget richtext
 					}
-					values[inlineEditProp]=value;
+					var children = null;
+					if (inlineEditProp == 'textContent'){
+						// set the children to be the same as the textContect so the dom is correct.
+						children = value;
+						
+					}else{
+						values[inlineEditProp]=value;
+					}
 					var command;
 
 					if (djprop === 'innerHTML'){
@@ -614,7 +689,7 @@ return declare("davinci.ve.input.SmartInput", null, {
 						delete values[inlineEditProp];
 						command = new ModifyRichTextCommand(this._widget, values, null, context);
 					}else{
-						command = new davinci.ve.commands.ModifyCommand(this._widget, values, null, context);
+						command = new davinci.ve.commands.ModifyCommand(this._widget, values, children, context);
 					}
 					this._widget._edit_context.getCommandStack().execute(command);
 					this._widget=command.newWidget;	
@@ -626,18 +701,21 @@ return declare("davinci.ve.input.SmartInput", null, {
 	},
 	
 	hide: function(cancel){
-		
 		if (this._inline) {
 			var value;
 			while (connection = this._connection.pop()){
-				dojo.disconnect(connection);
+				if (connection) {
+					dojo.disconnect(connection);
+				}
 			}
-			var contentPaneAncestor = this._findContentPaneAncestor(this._widget._edit_context.frameNode);
-			if(!contentPaneAncestor){
+			var smartInputContainer = this._findSmartInputContainer(this._widget._edit_context.frameNode);
+			if(!smartInputContainer){
 				console.log('ERROR. SmartInput.js _loading(). No ancestor ContentPane');
 				return;
 			}
-			contentPaneAncestor.removeChild(this._loadingDiv);
+			if (this._loadingDiv) {
+				smartInputContainer.removeChild(this._loadingDiv);
+			}
 			if(this._inline.style.display != "none" && this._inline.eb){
 				value = this._inline.eb.get('value');
 				this._value = value;
@@ -649,8 +727,8 @@ return declare("davinci.ve.input.SmartInput", null, {
 				}
 				this._inline.destroyRecursive();
 				delete this._inline;  
-                var iebPointer = contentPaneAncestor.ownerDocument.getElementById('iebPointer');
-				contentPaneAncestor.removeChild(iebPointer);
+                var iebPointer = smartInputContainer.ownerDocument.getElementById('iebPointer');
+				smartInputContainer.removeChild(iebPointer);
 				
 				if(value != null && !cancel){
 				if (!this.disableEncode && this._format === 'text' ) // added to support dijit.TextBox that does not support html markup in the value and should not be encoded. wdr
@@ -782,30 +860,28 @@ return declare("davinci.ve.input.SmartInput", null, {
 		},
 		
 		resize: function(e){
-			var tagetObj = dojo.byId("iedResizeDiv");
+			var targetObj = dojo.byId("iedResizeDiv");
 			var targetEditBoxDijit = dijit.byId("davinciIleb");
-			var ieb = dojo.byId("ieb");
-			var boxWidth = tagetObj.clientWidth  - 5;
-			var boxheight = tagetObj.clientHeight -6;
-			var smartInputRadioDivWidth = tagetObj.clientWidth -10;
-			boxWidth = tagetObj.clientWidth  /*+2*/ -8;
-			boxheight = tagetObj.clientHeight  -20; // new for text area
-			smartInputRadioDivWidth = tagetObj.clientWidth -9;
+			var boxWidth = targetObj.clientWidth  - 5;
+			var boxheight = targetObj.clientHeight -6;
+			var smartInputRadioDivWidth = targetObj.clientWidth -10;
+			boxWidth = targetObj.clientWidth  /*+2*/ -8;
+			boxheight = targetObj.clientHeight  -20; // new for text area
+			smartInputRadioDivWidth = targetObj.clientWidth -9;
 			var simObj = dojo.byId("smartInputSim");
 			dojo.style(simObj,'width',boxWidth + 10 + "px");
 			this.updateSimStyle();
 		
-			if (targetEditBoxDijit)
+			if (targetEditBoxDijit) {
 				targetEditBoxDijit._setStyleAttr({width: boxWidth + "px", height: boxheight + "px", maxHeight: boxheight + "px"}); // needed for multi line
-				targetEditBoxDijit._setStyleAttr({width: tagetObj.clientWidth + "px"});
+				targetEditBoxDijit._setStyleAttr({width: targetObj.clientWidth + "px"});
+			}
 			var obj = dojo.byId("davinci.ve.input.SmartInput_radio_div");
 			dojo.style(obj,'width',smartInputRadioDivWidth+ 2 +"px");
 			obj = dojo.byId("davinci.ve.input.SmartInput_radio_text_width_div");
-			dojo.style(obj,'width',tagetObj.clientWidth -50 + "px");
+			dojo.style(obj,'width',targetObj.clientWidth -50 + "px");
 			obj = dojo.byId("davinci.ve.input.SmartInput_radio_html_width_div");
-			dojo.style(obj,'width',tagetObj.clientWidth -50 + "px");
-		
-			
+			dojo.style(obj,'width',targetObj.clientWidth -50 + "px");
 		},
 		
 		onBlur: function(e){
@@ -828,7 +904,7 @@ return declare("davinci.ve.input.SmartInput", null, {
 			var editBox = ''+
 				'<div id="iedResizeDiv" class="iedResizeDiv" >' + 
 //			       '<input id="davinciIleb" class="davinciIleb smartInputTextBox" type="text"  dojoType="dijit.form.TextBox"  />' +
-				   '<textarea  dojoType="dijit.form.SimpleTextarea" name="davinciIleb" style="width:200px; height:30px;" trim="true" id="davinciIleb" class="smartInputTextArea" ></textarea>'+
+				   '<textarea  dojoType="dijit.form.SimpleTextarea" name="davinciIleb" trim="true" id="davinciIleb" class="smartInputTextArea" ></textarea>'+
 				   '<div id="smartInputSim" class="smartInputSim" ></div>'+
 					'<div id="iedResizeHandle" dojoType="dojox.layout.ResizeHandle" targetId="iedResizeDiv" constrainMin="true" maxWidth="200" maxHeight="600" minWidth="200" minHeight="55"  activeResize="true" intermediateChanges="true" ></div>' +
 		//			'<div id="iedResizeHandle" dojoType="dojox.layout.ResizeHandle" targetId="iedResizeDiv" constrainMin="true" maxWidth="200" maxHeight="200" minWidth="200" minHeight="19" resizeAxis="x" activeResize="true" intermediateChanges="true" ></div>' +
@@ -836,7 +912,7 @@ return declare("davinci.ve.input.SmartInput", null, {
 			if (this.multiLine === "true"){
 				editBox = ''+
 				'<div id="iedResizeDiv" class="iedResizeDiv" >' + 
-					'<textarea  dojoType="dijit.form.SimpleTextarea" name="davinciIleb" style="width:200px; height:60px;" trim="true" id="davinciIleb" class="smartInputTextArea" ></textarea>'+
+					'<textarea  dojoType="dijit.form.SimpleTextarea" name="davinciIleb" trim="true" id="davinciIleb" class="smartInputTextAreaMulti" ></textarea>'+
 					'<div id="smartInputSim" class="smartInputSim" ></div>'+
 //					'<div id="smartInputSim" style="height:10px; border-color: #B5BCC7; border-style: solid; border-width: 0px 3px 3px 3px;  background-color: #F7FCFF;"></div>'+
 					'<div id="iedResizeHandle" dojoType="dojox.layout.ResizeHandle" targetId="iedResizeDiv" constrainMin="true" maxWidth="200" maxHeight="600" minWidth="200" minHeight="80"  activeResize="true" intermediateChanges="true" ></div>' +
@@ -878,7 +954,7 @@ return declare("davinci.ve.input.SmartInput", null, {
 			        	'</span>   '+
 			        '</div> '+
 			        '<div id="davinci.ve.input.SmartInput_div_help" style="display:none;" class="smartInputHelpTextDiv" > '+
-			        	'<div dojoType="dijit.layout.ContentPane" style="text-align: left; padding:0; height:80px;" >'+this.getHelpText()+ '</div> '+
+			        	'<div dojoType="dijit.layout.ContentPane" class="smartInputHelpTextDivContentPane "style="padding:0;" >'+this.getHelpText()+ '</div> '+
 			        	'<div style="text-align: left; padding:0; height:2px;" ></div> '+
 			        '</div> '+
 		        '</div>' + 

@@ -2,15 +2,12 @@ package org.maqetta.server;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.util.Collection;
-
-
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOCase;
@@ -105,6 +102,9 @@ public class StorageFileSystem implements IStorage {
 	public IStorage newInstance(URI uri) {
 		return new StorageFileSystem(new File(uri));
 	}
+	public IStorage create(String path) {
+		throw new RuntimeException("Not implemented");
+	}
 	public Collection findFiles(IStorage f1, String pathStr, boolean ignoreCase) {
 		IOFileFilter filter;
 		IPath path = new Path(pathStr);
@@ -130,5 +130,7 @@ public class StorageFileSystem implements IStorage {
 	public String[] list() {
 		return this.file.list();
 	}
-
+	public String toString(){
+		return this.file.getAbsolutePath();
+	}
 }

@@ -27,41 +27,50 @@ define(["dojo/_base/declare",
 		fileTree : null,
 		__okButton : null,
 		dialogSpecificClass : null,
-		_fileDialog : null, 
+		_fileDialog : null,
 		
 		postMixInProperties : function() {
 			var langObj = this.langObj = uiNLS;
 			var dijitLangObj = commonNLS;
 			dojo.mixin(this, langObj);
 			dojo.mixin(this, dijitLangObj);
-			this.cancel =true;
 			this.inherited(arguments);
 		},
 		
 		postCreate : function(){
 			this.inherited(arguments);
-			
-			
-		
-			
+
 			this.arrowNode = this.fileDialogDetailsArrow;
 			
 			this._tree_collapse_expand();
 			var t = this;
+
 			if(this.dialogSpecificClass){
 				require([this.dialogSpecificClass],function(c){
-					t.dialogSpecificWidget = new c({dialogSpecificButtonsSpan:t.dialogSpecificButtonsSpan}, t.dialogSpecificOptionsDiv);
-				});
-			
-				
+					t.dialogSpecificWidget = new c(
+							{dialogSpecificButtonsSpan:t.dialogSpecificButtonsSpan, dialogSpecificClassOptions:this.dialogSpecificClassOptions}, 
+							t.dialogSpecificOptionsDiv);
+				}.bind(this));	
 			}
+
 			this._whereMenu = new Menu({style: "display: none;"});
 			this._whereDropDownButton = new DropDownButton({
 				className: "whereDropDown",
-	            dropDown: this._whereMenu,
+				dropDown: this._whereMenu,
 				iconClass: "fileDialogWhereIcon"
-	        });
+			});
+
 			this.fileDialogWhereDropDownCell.appendChild(this._whereDropDownButton.domNode);
+			
+			// If current folder or any ancestor folders are read-only, then force the folder to the root folder
+			var resource = this.value;
+			while(resource){
+				if(resource.readOnly()){
+					this.value = null;
+					break;
+				}
+				resource = resource.parent;
+			}
 			if(!this.value){
 				this._setValueAttr(this._getForcedRootAttr());
 			}
@@ -71,23 +80,20 @@ define(["dojo/_base/declare",
 			}));
 			dojo.connect(this.fileDialogFileName, "onkeyup", this, '_checkValid');
 			this.fileTree.watch("selectedItem", dojo.hitch(this, this._updateFields));
-			var connectHandle = dojo.connect(this._fileDialog, "onkeypress", this, function(e){
-				if(e.charOrCode===dojo.keys.ENTER){
-					// XXX HACK This is to circumvent the problem where the Enter key
-					//   isn't handled.  Normally, the Dijit Dialog handles that for
-					//   us, but our dialog classes are messed up right now.  Hence
-					//   this.
-					var evt = document.createEvent("MouseEvents");
-					evt.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false,
-							false, 0, null);
-					this.__okButton._onClick(evt);
-				}
-			
-			});
+
 			/* set initial value */
 			
 			this.fileTree.watch("selectedItem", dojo.hitch(this, this._checkValid));
+                                                             
+			this._updateFields();
 
+			this.__okButton.onClick = dojo.hitch(this, this._okButton);
+
+			// optionalMessage
+			if (this.optionalMessage) {
+				this.additionalMessage.innerHTML = this.optionalMessage;
+				this.additionalMessage.style.display = "block";
+			}
 		},
 		
 		startup: function(){
@@ -226,22 +232,26 @@ define(["dojo/_base/declare",
 				valid = valid && !parent.readOnly();
 			}
 			
-			resource = parent.getChild(name);
+			resource = parent.getChildSync(name);
 			if (resource) {
 				valid = valid && !resource.readOnly();
 			}
 			
 			this.__okButton.set('disabled', !valid);
 			return valid;
-		},
+		},             
 		
 		_okButton : function(e){
-	
 			var fullPath = (new Path(Workbench.getProject())).append(this._whereMenu.attr('value')).append(this.fileDialogFileName.get( 'value'));
 			
-			this.value =  fullPath.toString();
-			this.cancel = false;
-			this.onClose();
+			this.value = fullPath.toString();
+
+			var check = this.checkFileName(this.value);
+			if (check) {
+				return true
+			} else {
+				return false;
+			}
 		},
 			
 		_newFolder : function(){
@@ -259,7 +269,6 @@ define(["dojo/_base/declare",
 		},
 		
 		cancelButton: function(){
-			this.cancel = true;
 			this.onClose();
 		},
 		

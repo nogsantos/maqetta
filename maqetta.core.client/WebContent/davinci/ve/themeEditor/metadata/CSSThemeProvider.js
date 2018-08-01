@@ -1,4 +1,4 @@
-define(["dojo/_base/declare"], function(declare) {
+define(["dojo/_base/declare", "../../utils/pseudoClass"], function(declare, pseudoClass) {
 
 //TODO: Create custom HTML metadata provider similar to CSS
 
@@ -9,9 +9,8 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 	
 	constructor: function(resources, theme){
 		this._theme = theme;
-		this.url = resources[0].getURL();
+		this.url = encodeURI(resources[0].getURL());
 		this.getWidgets();
-		
 	},
 
 	getWidgets: function(){
@@ -53,25 +52,32 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 	
 	},
 	
-	getRelativeStyleSelectorsText: function(widgetType, state, subwidget,property){
+	getRelativeStyleSelectorsText: function(widgetType, state, subwidget,properties, className){
 		var selectors = this.getStyleSelectors(widgetType, state,subwidget);
-		var relativeSelectors = new Array();
+		var relativeSelectors = [];
 		for (s in selectors){
-			var foundProp = false;
-			for(var p=0;!foundProp && p<selectors[s].length;p++){
-				if(selectors[s][p]==property)
-					foundProp=true;
-				
-			}
-			if(foundProp){
-				var text = "" + s;
-				var classes = text.split(" ");
-				text = "";
-				for (var x = 1; x < classes.length; x++ ){
-					text += " " + classes[x];
+			properties.forEach(function(property){
+				var foundProp = false;
+				for(var p=0;!foundProp && p<selectors[s].length;p++){
+					if(selectors[s][p]==property || selectors[s][p] == '$std_10')
+						foundProp=true;
+					
 				}
-				relativeSelectors.push(text.replace(/^\s*/, "").replace(/\s*$/, "")); // trim leading trailing white space
-			}
+				if(foundProp){
+					var text = "" + s;
+					var classes = text.split(" ");
+					text = "";
+					classes.forEach(function(c){
+						// remove the theme body class ex .claro
+						if (c != "."+className) {
+							text += " " + c;
+						}
+					}.bind(this));
+					relativeSelectors.push(text.replace(/^\s*/, "").replace(/\s*$/, "")); // trim leading trailing white space
+					return;
+				}
+			}.bind(this));
+			
 		}
 		return relativeSelectors;
 		
@@ -83,14 +89,18 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 			console.log('metadata:getStyleSelectors no widgetType');
 			return;
 		}
-		if(!state) state = 'Normal';
+		if(!state) {
+			state = 'Normal';
+		}
 		var selectors;
-		var p = widgetType.split('.');
+		var p = widgetType.split(/[\.\/]/);
 		var w = p[0];
 		var n = p[p.length-1];
 		if(subwidget && (w in this._widgets) && (n in this._widgets[w])){
 			var sw = (subwidget.id) ? subwidget.id : subwidget;
-			if (!this._widgets[w][n].subwidgets[''+sw].states[''+state]) return null; // not valid state
+			if (!this._widgets[w][n].subwidgets[''+sw].states[''+state]) {
+				return null; // not valid state
+			}
 			selectors = this._widgets[w][n].subwidgets[''+sw].states[''+state].selectors;
 			if (!selectors || selectors == '$auto'){
 				selectors = this._createDefaultSelectors(''+w+sw,state);
@@ -116,9 +126,11 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 			console.log('metadata:getElementStyleProperties no widgetType');
 			return;
 		}
-		if(!state) state = 'Normal';
+		if(!state) {
+			state = 'Normal';
+		}
 		var elementProps;
-		var p = widgetType.split('.');
+		var p = widgetType.split(/[\.\/]/);
 		var w = p[0];
 		var n = p[p.length-1];
 		if(subwidget && (w in this._widgets) && (n in this._widgets[w])){
@@ -139,13 +151,9 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 			}
 			
 		}else{
-			
-			
-			console.log("metadata not found for" + widgetType + " state: " + state + " subwidget " + subwidget)
-			
+			console.log("metadata not found for" + widgetType + " state: " + state + " subwidget " + subwidget);
 		}
 		return elementProps;
-		
 	},
 	_createDefaultSelectors: function(widgetName, state){
 		var selector;
@@ -154,17 +162,63 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 		} else {
 			selector = '.'+this._theme.className+' .' + widgetName + state;
 		}
-		var selectors = new Object();
+		var selectors = {};
 		selectors[selector] =  ["$std_10"];
 	   return selectors;		
 	},
 	
 	_createDefaultQuery: function(widgetName, state){
-		var query;
-			query = '.' + widgetName;
-	   return query;		
+		return '.' + widgetName;
 	},
 	 
+    _simulateState: function(q, s, mode, updateWidget){
+        var querys = (q instanceof Array) ? q : [q];
+        var simulates = (s instanceof Array) ? s : [s];
+
+        for (var i = 0; i < simulates.length; i++){
+            var simulate = simulates[i];
+            var query = querys[i];
+            var index;
+            var attribute;
+            var attributeValue;
+            if ((index = simulate.indexOf(':')) > -1){
+                attribute = simulate.substring(index+1);
+                simulate = simulate.substring(0, index);
+                index = attribute.indexOf('=');
+                if(index > -1){
+                    attributeValue = attribute.substring(index+1);
+                    attribute = attribute.substring(0, index);
+                } else {
+                    attributeValue =  attribute;
+                }
+            }
+            var nodes = dojo.query(query,updateWidget.domNode);
+            var n = nodes[0];
+            if(!n){ // might already be at the top node.
+                n = updateWidget.domNode;
+            }
+            try {
+                if(mode == 'add'){
+                    if(attribute){
+                        n.setAttribute(attribute, attributeValue);
+                    }
+                    if(simulate){
+                        dojo.addClass(n,simulate);
+                    }
+                } else { 
+                    if(attribute){
+                        n.removeAttribute(attribute);
+                    }
+                    if (simulate){
+                        dojo.removeClass(n,simulate);
+                    }
+                }
+           } catch(e){
+        	   console.error('CSSThemeProvider._simulateState invalid simulate in metadata for ' + updateWidget.type + " " + q + ": "  + s);
+           }
+        }
+	},
+	
 	_updateStyle: function(updateWidget, widgetType, state, mode){
 		if (updateWidget.id === 'all') return; // global all widget 
 		var init = false;
@@ -181,11 +235,11 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 //		if (widgetType == 'davinci.ve.widget.HtmlWidget' || widgetType == 'davinci.ve.helpers.HtmlWidget') {
 //			 widgetType = 'html.' + node.localName;
 //		 }
-		var p = widgetType.split('.');
+		var p = widgetType.split(/[\.\/]/);
 		var w = p[0];
 		var n = p[p.length-1];
-		var query;
-		var simulate;
+//		var query;
+//		var simulate;
 		var widget = this._widgets[w][n];
 		// some widgets do not start in a normal state. like TabContainer
 		if (state === 'Normal' && init == true && mode === 'remove' && this._widgets[w][n].startState){
@@ -197,33 +251,25 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 				q = this._createDefaultQuery(w+n, state);
 				widget.states[''+state].query = q;
 			}
-			query = q; //.push(q);
+
 			var s = this._widgets[w][n].states[''+state].simulate;
 			if(!s){
 				s = ' ';
 				var selectors = this.getStyleSelectors(widgetType, state);
 				var cssClass = '';
 				for (var selector in selectors){
-					cssClass  = selector.replace(/\./g,'');
+					cssClass = pseudoClass.replace(selector);
+					cssClass  = cssClass.replace(/\./g,' ');
 					cssClass = cssClass.replace(this._theme.className,'');
-					s = s + ' ' + cssClass;
+					s += ' ' + cssClass;
 				}
 				if(state != 'Normal'){
 						s = w + state + ' ' + s; // add the default state class
-					}
-			}
-			simulate = s; //.push(s);
-			var nodes = dojo.query(query,updateWidget.domNode);
-			var n = nodes[0];
-			if(!n){ // might already be at the top node.
-				n = updateWidget.domNode;
+				}
 			}
 			if (state != 'Normal'){ // Normal is the base class do not remove it.
-				if(mode == 'add'){
-					dojo.addClass(n,simulate);
-				} else { 
-					dojo.removeClass(n,simulate);
-				}
+				s += ' ' + pseudoClass.MAQETTA_PSEUDO_CLASS + state; // add the browser Pseudo Class emeulation
+			    this._simulateState(q, s, mode, updateWidget);
 			}
 		}
 
@@ -245,15 +291,19 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 					var cssClass = '';
 					s = ' ';
 					for (var selector in selectors){
-						cssClass  = selector.replace(/\./g,'');
-						cssClass = cssClass.replace(this._theme.className,'');
-						s = s + ' ' + cssClass;
+						cssClass = pseudoClass.replace(selector)
+							.replace(/\./g,' ')
+							.replace(this._theme.className,'');
+						s += ' ' + cssClass;
 					}
 					if(state != 'Normal'){
 							s = w + state + ' ' + s; // add the default state class
 						}
 				}
-				query = q; //push(q);
+				if (state != 'Normal'){ // Normal is the base class do not remove it.
+	                this._simulateState(q, s, mode, updateWidget);
+	            }
+				/*query = q; //push(q);
 				simulate = s; //.push(s);
 				var nodes = dojo.query(query,updateWidget.domNode);
 				var n = nodes[0];
@@ -266,7 +316,7 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 					} else { 
 						dojo.removeClass(n,simulate);
 					}
-				}
+				}*/
 				
 			}
 		}
@@ -303,7 +353,7 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 			state = 'Normal';
 		}
 			
-		var p = widgetType.split('.');
+		var p = widgetType.split(/[\.\/]/);
 		var w = p[0];
 		var n = p[p.length-1];
 		var query;
@@ -325,7 +375,15 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 			console.log(e, 'w=' + w, 'n=' + n);
 			return null;
 		}
-		var nodes = dojo.query(query,node);
+		var q;
+		if (query instanceof Array){ 
+			// Array so just use the first element for domNode query
+			q = query[0];
+		} else {
+			q = query;
+		}
+		
+		var nodes = dojo.query(q,node);
 		var n = nodes[0];
 		if(!n){ // might already be at the top node.
 			n = node;
@@ -335,10 +393,12 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 	},
 	
 	getMetadata: function(widgetType){
-		if (!widgetType) return undefined;
-		var p = widgetType.split('.');
+		if (!widgetType) {
+			return undefined;
+		}
+		var p = widgetType.split(/[\.\/]/);
 		var w = p[0];
-		var n = p[p.length-1]
+		var n = p[p.length-1];
 		var s = this._widgets && this._widgets[w] && this._widgets[w][n];
 		return s;
 	},
@@ -358,10 +418,35 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 	},
 	
 	
-	isPropertyVaildForWidgetRule : function(rule, property, widget){
+	isPropertyVaildForWidgetRule : function(rule, property, widget, subWidget, state){
+
 		var widgetType = this.getWidgetType(widget);
 		var widgetMetaData = this.getMetadata(widgetType);
-		return this.isPropertyRuleValid(rule, property, widgetMetaData);
+		if (subWidget) {
+			widgetMetaData = widgetMetaData.subwidgets[subWidget];
+		}
+		if (state) {
+			widgetMetaData = widgetMetaData.states[state];
+		} else {
+			widgetMetaData = widgetMetaData.states['Normal'];
+		}
+		var selectorText = rule.getSelectorText();
+		for (var selector in widgetMetaData.selectors){
+			var props = widgetMetaData.selectors[selector];
+			//if (containsSelector(rule, selector)){
+			if (selectorText == selector){ // match the complete selector
+				//console.log('found the selector ' + selectorText);
+				for (var i=0; i < props.length; i++){
+					var prop = props[i];
+					if (prop == '$std_10' || prop == property){
+						//console.log('Valid: ' + property + ' for CSSRule ' + selectorText);
+						return true;
+					}
+				}
+			}
+		}
+		//return this.isPropertyRuleValid(rule, property, widgetMetaData);
+		return false;
 	},
 	
 	isPropertyRuleValid: function(rule, property, widgetMetaData){
@@ -370,7 +455,8 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 			var state = widgetMetaData.states[c];
 			for (var selector in state.selectors){
 				var props = state.selectors[selector];
-				if (containsSelector(rule, selector)){
+				//if (containsSelector(rule, selector)){
+				if (selectorText == selector){ // match the complete selector
 					//console.log('found the selector ' + selectorText);
 					for (var i=0; i < props.length; i++){
 						var prop = props[i];
@@ -388,8 +474,9 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 				var state = subwidget.states[c];
 				for (var selector in state.selectors){
 					var props = state.selectors[selector];
-					if (containsSelector(rule, selector)){
-						//console.log('found the selector ' + selectorText);
+					//if (containsSelector(rule, selector)){
+					if (selectorText == selector){ // match the complete selector
+						//console.log('found the selector ' + selectorText); 
 						for (var i=0; i < props.length; i++){
 							var prop = props[i];
 							if (prop == '$std_10' || prop == property){
@@ -415,63 +502,7 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 		
 	},
 	
-	isPropertyVaildForWidgetRule : function(rule, property, widget){
-		var widgetType = this.getWidgetType(widget);
-		var widgetMetaData = this.getMetadata(widgetType);
-		return this.isPropertyRuleValid(rule, property, widgetMetaData);
-	},
-	
-	isPropertyRuleValid: function(rule, property, widgetMetaData){
-		var selectorText = rule.getSelectorText();
-		for (var c in widgetMetaData.states){
-			var state = widgetMetaData.states[c];
-			for (var selector in state.selectors){
-				var props = state.selectors[selector];
-				if (containsSelector(rule, selector)){
-					//console.log('found the selector ' + selectorText);
-					for (var i=0; i < props.length; i++){
-						var prop = props[i];
-						if (prop == '$std_10' || prop == property){
-							//console.log('Valid: ' + property + ' for CSSRule ' + selectorText);
-							return true;
-						}
-					}
-				}
-			}
-		}
-		for (var sw in widgetMetaData.subwidgets){
-			var subwidget = widgetMetaData.subwidgets[sw];
-			for (var c in subwidget.states){
-				var state = subwidget.states[c];
-				for (var selector in state.selectors){
-					var props = state.selectors[selector];
-					if (containsSelector(rule, selector)){
-						//console.log('found the selector ' + selectorText);
-						for (var i=0; i < props.length; i++){
-							var prop = props[i];
-							if (prop == '$std_10' || prop == property){
-								//console.log('Valid: ' + property + ' for CSSRule ' + selectorText);
-								return true;
-							}
-						}
-					}
-				}
-			}
-		}
-        return false;
 		
-		function containsSelector(rule, selectorText){
-			for (var i=0;i<rule.selectors.length; i++)
-			{
-				var selectorName = rule.selectors[i].getText();
-				if (selectorName == selectorText)
-					return true;
-			}
-			return false;
-		}
-		
-	},
-	
 	isPropertyValidForRule: function(rule, property){
 		var ret = false;
 		var selectorText = rule.getSelectorText();
@@ -493,11 +524,11 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
 		if (!this._widgets){
 			return null;
 		}
-		states = new Array();
+		states = [];
 		for (var a in this._widgets){
 			var toolkit = this._widgets[a];
 			for (var b in toolkit){
- 			  if (b != '$all'){ // don't inclue the states for the all widget
+ 			  if (b.indexOf('$all') != 0){ // don't inclue the states for the all widgets
 				var widget = toolkit[b];
 				for (var c in widget.states){
 					states[c] = c;
@@ -511,7 +542,7 @@ return declare("davinci.ve.themeEditor.metadata.CSSThemeProvider", null, {
  			  }
 			}
 		 }
-		retStates = new Array();
+		retStates = [];
 		for (var s in states){
 			retStates.push(s);
 		}

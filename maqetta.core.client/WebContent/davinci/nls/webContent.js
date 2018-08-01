@@ -5,6 +5,7 @@ define({ root:
 		"designer":"Designer,",
 		"welcome":"Welcome",//also in review.html
 		"loadingMaqetta":"&nbsp;Loading Maqetta...",
+		startupError: "Error starting Maqetta: ${0}",
 		"logOff":"Log Out",//also in review.html
 		"unsupportedBrowser":"Unsupported Browser",
 		"unsupportedNote":"Maqetta supports Firefox 4, Chrome 5, and Safari 5.1 or greater. If you wish to continue with an unsupported browser, click \"Continue.\"",
@@ -17,6 +18,7 @@ define({ root:
 		
 		//preview.html
 		"devicePreviewError":"Maqetta device previewer error. Must supply URL parameter 'file='",
+		"devicePreviewPreviewing":"Previewing:",
 		
 		//davinci.review/WebContent/review.html
 		"help":"Help",
@@ -26,14 +28,17 @@ define({ root:
 		"reviewPageTitle":"Maqetta Review Board",
 		
 		//davinci/Runtime.js
-		"careful":"Careful! You are about to leave daVinci.",
+		"careful":"Warning: You are about to leave Maqetta.",
 		"errorLoadingPlugin":"error loading plugin ${0}, response=${1}",
 		"errorLoadingPlugins":"error loading plugins",
 		"multipleFilesUnsaved":"${0} (NOTE: This is one of ${1} files with unsaved changes.)",
+		"idleSessionMessage": "Your session will timeout in ${seconds} seconds, click anywhere in the page to continue using Maqetta.",
 		
 		//davinci/Workbench.js
+		"fileHasUnsavedChanges":"Save changes to ${0}?",
 		"perspectiveNotFound":"perspective not found: ${0}",
 		"scopeNotDefined":"scope not defined for action: ${0}",
-		"funcNotDefined":"function not defined for action: ${0}"
+		"funcNotDefined":"function not defined for action: ${0}",
+		"serverConnectError":"<h3>Error connecting to the Maqetta Server.</h3><br><div>Please click here to <a href='${redirectUrl}'>return to Maqetta</a><div><div>Error description: ${error}</div>"
 }
 });

@@ -45,10 +45,14 @@
 }
 
 .propPaletteDetailsRoot .propRowHidden {
-	display:none;
+	/*display:none;*/
 }
 
-.claro .propertiesSection .propSectionButton.dijitTitlePane .dijitArrowNode {
+.propPaletteRoot .dijitTitlePaneTitleFocus {
+	text-align:center;
+}
+
+.claro .propertiesContent .propSectionButton.dijitTitlePane .dijitArrowNode {
 	display:inline-block;
 	float:right;
 	background:none;
@@ -58,7 +62,7 @@
 	width:8px;
 }
 .dijitTitlePane.cssBreadcrumbContainer .dijitTitlePaneTitle {
-	cursor:auto;	// Override pointer cursor that is default for claro
+	cursor:auto;	/* Override pointer cursor that is default for claro */
 }
 .breadcrumbText {
 	display:inline-block;
@@ -129,15 +133,17 @@
 .rulePreview pre{
 	font-size : 85%;
 	padding: 0.2em 1em;
-	border: 1px solid #CCCCCC;
+	border: 1px solid #CCC;
 	font-family:Verdana,Arial,Helvetica,sans-serif;
 	
 }
 
 
 
-
-.propertiesSection .dijitTitlePaneTextNode{
+.propertiesContent {
+	/*display:none;*/
+}
+.propertiesContent .dijitTitlePaneTextNode{
 	
     font: 8pt Verdana;
     letter-spacing: -0.02em;
@@ -159,13 +165,13 @@
 		display: none;
 }
 
-.davinci_ve_ThemeEditor .showCss.propertyButton{
+.davinci_themeEdit_ThemeEditor .showCss.propertyButton{
 	
 	display:none;	
 	
 }
 
-.davinci_ve_ThemeEditor .cssCascadeSection{
+.davinci_themeEdit_ThemeEditor .cssCascadeSection{
 	display:none;	
 }
 
@@ -174,7 +180,7 @@
   	width:90%;
 	position:absolute;
 }
-.propertiesSection .propInputWithIncrDecrButtons {
+.propertiesContent .propInputWithIncrDecrButtons {
 	margin-right:38px;
 	padding:1.5px 0;
 }
@@ -190,35 +196,35 @@
 	display:none;
 	
 }
-.propertiesSection .propertyButton {
+.propertiesContent .propertyButton {
 	width:16px;
 	height:16px;
 	border:1px solid #B5BCC7;	/* Same border color as Claro ComboBox */
 	margin-top:2px; /* Magically makes buttons line up vertically */
 }
-.propertiesSection .propertyButton.incrementButton {
-	background: url('./img/sprite.png') no-repeat;
+.propertiesContent .propertyButton.incrementButton {
+	background: url('img/sprite.png') no-repeat;
 	background-position: -1px -1515px;
 	width: 16px;
 	height: 16px;
 }
-.propertiesSection .propertyButton.decrementButton {
-	background: url('./img/sprite.png') no-repeat;
+.propertiesContent .propertyButton.decrementButton {
+	background: url('img/sprite.png') no-repeat;
 	background-position: -1px -583px;
 	width: 16px;
 	height: 16px;
 	margin-left:-1px;	/* So that border coincides with increment button border */
 }
-.propertiesSection .propertyButton.showCss{
+.propertiesContent .propertyButton.showCss{
 	background:none;
 	border:none;
 	margin-top:-4px;
 }
-.dj_webkit .propertiesSection .propertyButton.showCss{
+.dj_webkit .propertiesContent .propertyButton.showCss{
 	margin-top:-4px; /* Webkit layout is 2px different than Mozilla */
 }
-.propertiesSection .propertyButton.showCss.showCssVisible{
-	background: url('./img/sprite.png') no-repeat;
+.propertiesContent .propertyButton.showCss.showCssVisible{
+	background: url('img/sprite.png') no-repeat;
 	background-position: -83px -1192px;
 	width: 16px;
 	height: 16px;		
@@ -234,7 +240,7 @@ button.showCss::-moz-focus-inner {
 	font-weight:bold;
 	
 }
-.claro .propertiesSection .dijitTitlePaneTitle {
+.claro .propertiesContent .dijitTitlePaneTitle {
 	margin-bottom: 0px;
 	padding-bottom: 2px;
 	padding-top: 1px;
@@ -243,32 +249,56 @@ button.showCss::-moz-focus-inner {
 .claro .dijitTitlePaneTitleFocus {
 	padding-bottom:0;
 }
-.claro .propertiesSection .dijitTitlePaneTitleHover {
+.claro .propertiesContent .dijitTitlePaneTitleHover {
 	/*background-color:#ABD6FF;*/
 	background-color:#c0d0f0;
 }
 .propertiesTitleBar {
-	 background:#fefefe; 
-	 text-align:left;
-	 white-space: nowrap;
-	 padding-left:0.5em;
-	 padding-top:2px;
-
+	margin: 0px;
+	margin-top:3px;
+	padding: 0px;
+	text-align:left;
+	white-space: nowrap;
 }
-.claro propertiesSection .dijitTitlePaneTitle {
+.propertiesWidgetDescription {
+	margin:0 2px;
+	padding:4px 6px;
+	border:1px solid gray;
+	border-radius:2px;
+}
+.propertiesTitleBarPropertiesContainer {
+	margin:0 2px;
+}
+.propertiesTitleBarProperties {
+	background: #F8F8F8;
+	border: 1px solid darkGray;
+	border-radius: 4px;
+	text-align:left;
+	white-space: nowrap;
+}
+.claro propertiesContent .dijitTitlePaneTitle {
 	background-color:#F3F3F3;
 	height:3.8em;	/* FIXME: code uses absolute layout. Shouldn't */
 }
 
-.propertiesWidgetDescription {
-	line-height:1.8em;
-	font-size: 10px;
+#propertiesContentContainer .propertiesWidgetDescription {
+	line-height:22px;
+	font-size: 18px;
+	padding-left:5px;
+	color:white;
 }
+
 .propertiesWidgetDescriptionFor {
 	font-style:italic;
+	padding-right:5px;
 }
-.propClassInputRow {
-	font-size:10px;
+
+.propertiesTitleBar .property_table_stretchable {
+	margin:2px 0px 6px;
+}
+
+.propertiesSelection.propertiesTitleBar .property_table_stretchable{
+	visibility: visible;
 }
 
 .cascadeTable {
@@ -354,7 +384,7 @@ button.showCss::-moz-focus-inner {
    height:14px;
   background-repeat: no-repeat;
    border-style:none;
-  background-image:url('./img/sprite.png');
+  background-image:url('img/sprite.png');
   background-position: 0 -648px;
   background-color: transparent;
 }
@@ -373,15 +403,9 @@ button.showCss::-moz-focus-inner {
 }
 
 .propScrollableArea{
-	
 	overflow-y:auto;
 	overflow-x:hidden;
-	position:absolute;
-	width:100%;
-	top:0;
-	bottom:0;
-	margin-top:3.8em; 	/* FIXME: code uses absolute layout. Shouldn't */
-	
+	width:100%;	
 }
 .property_table_stretchable{
 	border-spacing:0 1px;
@@ -392,7 +416,7 @@ button.showCss::-moz-focus-inner {
 	
 */	
 }
-.claro .propertiesSection .dijitTitlePaneContentInner {
+.claro .propertiesContent .dijitTitlePaneContentInner {
 	padding:2px;
 }
 .cssOverRidden .cascadText, .cssShorthandOverRidden .cascadText{
@@ -410,12 +434,17 @@ button.showCss::-moz-focus-inner {
 }
 .propertyInputField,.propertyDisplayName{
 		font-size:10px; 
+}
+.propertyInputField .dijitTimeTextBox, .propertyInputField .dijitDateTextBox {
+		width: 100%; 
 } 
 .property_table_stretchable .propertyDisplayName{
 	width:60px;
 	text-align:right;
 	white-space:nowrap;
-	
+}
+.propertiesTitleBar .property_table_stretchable .propertyDisplayName{
+	width:30px;
 }
 .claro .property_table_stretchable .dijitComboBox .dijitInputField,
 .claro .property_table_stretchable input,
@@ -442,11 +471,29 @@ button.showCss::-moz-focus-inner {
 .propertiesTitleBar p {
 	
 	 font-family:Verdana; 
-	 font-size:1em;
 	 margin: auto;
 }
-.propertiesSection .show_all_rules_cell {
+.propertiesContent .show_all_rules_cell {
 	text-align:center;
 	background-color:#E6E6E7;
 }
-
+#propertiesContentContainer  .propertiesTitleClassName {
+	color:white;
+	font-size:12px;
+}
+.propPaletteDragDiv {
+	position:absolute;
+	z-index:1000000;
+}
+#davinci_app .dijitContentPane.maqPropertySection {
+	padding:0;
+}
+.cascadeBackButtonDiv {
+	display:none;
+}
+.showingCascade .cascadeBackButtonDiv {
+	display:block;
+}
+.showingCascade .propertyExtra {
+	display:none;
+}

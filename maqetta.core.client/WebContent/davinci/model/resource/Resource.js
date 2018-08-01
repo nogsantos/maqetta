@@ -1,10 +1,12 @@
 define([
 	"dojo/_base/declare",
+	"dojo/_base/xhr",
+	"dojo/_base/connect",
+	"dojo/Deferred",
 	"davinci/Runtime",
 	"davinci/model/Model",
-//	"davinci/Workbench",
 	"davinci/model/Path"
-], function(declare, Runtime, Model, /*Workbench,*/ Path) {
+], function(declare, xhr, connect, Deferred, Runtime, Model, Path) {
 
 return declare("davinci.model.resource.Resource", Model, {
 
@@ -17,6 +19,7 @@ return declare("davinci.model.resource.Resource", Model, {
 		this.elementType = "Resource";
 		this.name = "";
 		this.parent = null;
+		this._id = dijit.getUniqueId("maqFileResource");
 	},
 
 	getName: function() {
@@ -42,27 +45,25 @@ return declare("davinci.model.resource.Resource", Model, {
 
 	getURL: function() {
 		var path = this.getPath();
-		while(path.indexOf(".") == 0 || path.indexOf("/") == 0) {
-			path = path.substring(1, path.length);
+		if(path.indexOf("./") == 0 ) {
+			path = path.substring(2, path.length);
 		}
-		var loc = davinci.Workbench.location();
-		if (loc.charAt(loc.length-1) == '/') {
-			loc = loc.substring(0,loc.length-1);
-		}
-		return loc + '/user/' + Runtime.userName + '/ws/workspace/' + path;
+		var userWorkspaceUrl = Runtime.getUserWorkspaceUrl();
+		
+		/* need a special flavor or URI Rewrite to encode files with # */
+		return  userWorkspaceUrl + path;
 	},
 
 	rename: function(newName) {
-		var path = new Path(this.getPath()).removeLastSegments();
-		var newPath = path.append(newName);
-		var response = Runtime.serverJSONRequest({
-			url:"./cmd/rename", 
-			handleAs:"text", 
-			sync:true,
-			content:{'oldName':this.getPath(), 'newName' : newPath.toString()} 
-		});
-		this.name = newName;
-		dojo.publish("/davinci/resource/resourceChanged", ["renamed",this]);
+		var newPath = new Path(this.getPath()).removeLastSegments().append(newName);
+		return xhr.get({
+			url: "cmd/rename", 
+			handleAs: "text", 
+			content: {oldName: this.getPath(), newName: newPath.toString()} 
+		}).then(function() {
+			this.name = newName;
+			connect.publish("/davinci/resource/resourceChanged", ["renamed", this]);
+		}.bind(this));
 	},
 
 	getParentFolder: function() {
@@ -73,7 +74,7 @@ return declare("davinci.model.resource.Resource", Model, {
 	},
 
 	isVirtual: function() {
-		return (this.libraryId != null);
+		return !!this.libraryId;
 	},
 
 	visit: function(visitor, dontLoad) {
@@ -90,27 +91,40 @@ return declare("davinci.model.resource.Resource", Model, {
 	},
 
 	deleteResource: function(localOnly) {
-		var response="OK";
-		if (!localOnly) {
-			response = davinci.Runtime.serverJSONRequest({
-				url: "cmd/deleteResource", handleAs: "text",
-				content: {path: this.getPath()}, sync: true
-			});
-		}
-		if (response == "OK") {
-			var found=-1;
-			for(var i=0;i<this.parent.children.length && found==-1;i++){
-				if(this.parent.children[i].getName()==this.getName())
-					found = i;
-			}
-			
-			this.parent.children.splice(found, 1);
-			dojo.publish("/davinci/resource/resourceChanged",["deleted",this]);
-		} else {
-			//TODO: refresh the resource in the tree if it is a dir -- delete may have been partial.
-			alert(response);
-		}
-	}
+		var promise,
+			modifyModel = function(){
+				var name = this.getName();
+				this.parent.children.some(function(child, i, children) {
+					if(child.getName() == name) {
+						children.splice(i, 1);
+						return true;
+					}				
+				});
+	
+				connect.publish("/davinci/resource/resourceChanged", ["deleted", this]);
+			}.bind(this);
 
+		if (localOnly) {
+			promise = new Deferred();
+			modifyModel();
+			promise.resolve();
+		} else {
+			promise = xhr.get({
+				url: "cmd/deleteResource",
+				handleAs: "text",
+				content: {path: this.getPath()}
+			}).then(
+				modifyModel,
+				function(){
+					//TODO: refresh the resource in the tree if it is a dir -- delete may have been partial.
+				}
+			);
+		}
+		return promise;
+	},
+
+	getId: function() {
+		return this._id;
+	}
 });
 });

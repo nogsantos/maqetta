@@ -13,88 +13,38 @@
 			height: 100%;
 		}
 	</style>
-	<script type="text/javascript" src="app/dojo/dojo.js?@revision@" data-dojo-config="async: true, parseOnLoad: true, modulePaths:{'preview':'../preview', 'system':'../system'}, cacheBust: '@revision@', ioPublish:true"></script>
+	<script type="text/javascript" src="app/dojo/dojo.js?@revision@" data-dojo-config="
+		async: true,
+		parseOnLoad: true,
+		modulePaths:{'preview':'../preview', 'system':'../system'},
+		aliases:[['i18n', 'dojo/i18n']],
+		cacheBust: '@revision@',
+		ioPublish:true
+	"></script>
 	<script type="text/javascript">
-		require(["dijit/dijit", "davinci/davinci", ], function () {
+		require(["dijit/dijit", "davinci/davinci" ], function () {
 			require(["dojo/i18n!davinci/nls/webContent", "davinci/version", "dojo/domReady!"], function (webContent, version) {
-				  dojo.byId("davinci_user_welcome").innerHTML = webContent.welcome;
 				  dojo.byId("load_screen").innerHTML = webContent.loadingMaqetta;
-				  dojo.byId("davinci_logoff").innerHTML = webContent.logOff;
-				  dojo.byId("maqetta_designer").innerHTML = webContent.designer;
-				  dojo.byId("maqetta_version").innerHTML = version;
 				  dojo.byId("title_id").text = webContent.pageDesignerTitle;
 			});
 
 			var Workbench = require("davinci/Workbench"),
-				Runtime = require("davinci/Runtime");
-
+				Runtime = require("davinci/Runtime")
+		
+			var resetWorkbenchState = dojo.queryToObject(dojo.doc.location.search.substr((dojo.doc.location.search[0] === "?" ? 1 : 0))).resetWorkbenchState;
+			if(resetWorkbenchState){
+				Workbench._state = {};
+				Workbench.updateWorkbenchState().then(function(){
+					location.href=".";	
+				});
+				
+			}	
+				
+				
 			Runtime.loadPlugins();
 	 		Runtime.initialPerspective="davinci.ve.pageDesign";
 
 			require(["dojo/i18n!davinci/nls/webContent", "dojo/domReady!"], function (webContent) {
-				var run = function() {
-					var userInfo;
-					var result = Runtime.getUser();
-
-					if (result) {
-					   dojo.byId('davinci_user').innerHTML = result;
-					   Runtime.userName = result;
-					} else {
-						//FIXME: temporary fix for running via file: URLs
-					   dojo.byId('davinci_user').innerHTML=webContent.maqettaUser;
-					}
-					if (!result || result=='maqettaUser') {
-						dojo.byId('davinci_user').innerHTML=webContent.localhostUser;
-						dojo.byId('davinci_logoff').href="";
-						Runtime.isLocalInstall=true;
-					}
-					var isRunningJoomla  = dojo.cookie("DAVINCI.JOOMLA");
-					if (isRunningJoomla) {
-						dojo.byId('davinci_logoff').href = "http://" + window.location.hostname + 
-							"/index.php?option=com_user&task=logout&return=Lw";
-				 	}
-				 	// Hide logoff if single-user mode
-					var singleUser = Runtime.singleUserMode();
-					if(singleUser){
-						var logoff = dojo.byId('davinci_logoff');
-						var main_menu = dojo.byId('davinci_main_menu');
-						if (logoff && main_menu) {
-							logoff.style.display = 'none';
-							main_menu.style.marginRight = '3em';
-						}
-					}
-					
-					// set up for review and commenting...
-					var designerName  = dojo.cookie("davinci_designer");
-					var reviewVersion = dojo.cookie("review_version");
-					dojo.cookie("davinci_designer", null, {expires: -1, path:"/"});
-					dojo.cookie("review_version", null, {expires: -1, path:"/"});
-					
-					var loadReviews = function(){
-						if (reviewVersion && designerName) {
-							var node = davinci.review.model.resource.root.findVersion(designerName, reviewVersion);
-							if (node) {
-								/* if we found a node, then the user clicked a review link to get here, 
-								 * TODO: bring the R&C view forward
-								 */
-								node.getChildren(function(childs){
-									if(childs.length > 1) {
-										return;
-									}
-									dojo.forEach(childs, function(child){
-										davinci.Workbench.openEditor({
-											fileName: child,
-											content: node.getText()
-										});
-									})
-									
-								}, false);
-							}
-						}
-					}
-					
-					Workbench.run().then(loadReviews);
-				};
 
 				// Display a warning dialog for unsupported browsers
 				if (!(dojo.isFF >= 4 || dojo.isChrome >= 5 || dojo.isSafari >= 5.1)) {
@@ -112,37 +62,34 @@
 					});
 					unsupportedDialog.show();
 				} else {
-					run();
+					Workbench.run();
 				}
 			});
 
 			dojo.addOnUnload(Workbench.unload);
 		});
 	</script>
+	<link rel="shortcut icon" href="app/davinci/img/maqetta.png" />
 	</head>
 
-	<body class="claro">
+	<body id='maqBody' class="claro">
 		<div class="loading"><table><tr><td id="load_screen"><span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>&nbsp;</td></tr></table></div>
 		<div id="davinci_app">
 			<div id="davinci_top_bar">
+				<div id="davinci_top_bar_main">
 					<div id="davinci_user_container">
-						<span id="davinci_user_welcome"></span>
-						<span id="davinci_user"></span>
 						<span id="davinci_main_menu"> </span>
-						<a id="davinci_logoff" href='javascript:davinci.Runtime.logoff()'> </a>
 					</div>
 					<span class="maq_banner_name_box">
+						<span class="maq_banner_logo"></span>
 						<span class="maq_banner_name">Maqetta</span>
-						<span id="maqetta_designer" class="maq_banner_component"></span>
-						<span id="maqetta_version" class="maq_banner_version"></span>
 					</span>
-<!-- no toolbar for now, uncomment and put in desired location, and toolbar will be generated based on actions
-					<div id="toolbar_container">
-						<span id="davinci_toolbar_main"></span>
-					</div>
--->
+					<span id="maq_banner_editor_commands"></span>
+				</div>
+				<div id="davinci_top_bar_divider"></div>
 			</div>
 			<div id="mainBody"></div>
 		</div>
+		<div id="contentassist" class="contentassist"></div>
 	</body>
 </html>

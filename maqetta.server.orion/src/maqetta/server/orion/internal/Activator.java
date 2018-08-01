@@ -27,10 +27,12 @@ import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceReference;
+import org.osgi.framework.ServiceRegistration;
 import org.osgi.service.packageadmin.PackageAdmin;
 import org.osgi.util.tracker.ServiceTracker;
 import org.osgi.util.tracker.ServiceTrackerCustomizer;
 
+@SuppressWarnings("restriction")
 public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 		IRegistryChangeListener {
 	public static volatile BundleContext bundleContext;
@@ -40,12 +42,13 @@ public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 	 */
 	public static final boolean DEBUG = true;
 
+	public static final String LOCATION_WORKSPACE_SERVLET = "/workspace"; //$NON-NLS-1$
 	public static final String LOCATION_FILE_SERVLET = "/file"; //$NON-NLS-1$
 	public static final String LOCATION_PROJECT_SERVLET = "/project"; //$NON-NLS-1$
 
-	public static final String PI_SERVER_SERVLETS = "org.eclipse.orion.server.servlets"; //$NON-NLS-1$
 	public static final String PROP_USER_AREA = "org.eclipse.orion.server.core.userArea"; //$NON-NLS-1$
-	private ArrayList registryChangeListeners = new ArrayList();
+
+	private ArrayList<IRegistryListener> registryChangeListeners = new ArrayList<IRegistryListener>();
 	static Activator singleton;
 
 	private static Bundle bundle;
@@ -55,10 +58,11 @@ public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 	private ServiceTracker registryTracker;
 	private IFileStore rootStore;
 
-	private Map<String, URI> aliases = Collections
-			.synchronizedMap(new HashMap<String, URI>());
+	private Map<String, URI> aliases = Collections.synchronizedMap(new HashMap<String, URI>());
 
 	private URI rootStoreURI;
+
+	private ServiceRegistration<IWebResourceDecorator> maqProjectDecoratorRegistration;
 
 	public static Activator getDefault() {
 		return singleton;
@@ -100,7 +104,6 @@ public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 	}
 
 	public void modifiedService(ServiceReference reference, Object service) {
-
 	}
 
 	public void removedService(ServiceReference reference, Object service) {
@@ -111,7 +114,6 @@ public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 		if (service == registry) {
 			registry = null;
 		}
-
 	}
 
 	public IExtensionRegistry getRegistry() {
@@ -137,12 +139,10 @@ public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 	}
 
 	public void registryChanged(IRegistryChangeEvent event) {
-		for (Iterator iterator = this.registryChangeListeners.iterator(); iterator
-				.hasNext();) {
-			IRegistryListener listener = (IRegistryListener) iterator.next();
+		for (Iterator<IRegistryListener> iterator = this.registryChangeListeners.iterator(); iterator.hasNext();) {
+			IRegistryListener listener = iterator.next();
 			listener.registryChanged();
 		}
-
 	}
 
 	/**
@@ -201,12 +201,8 @@ public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 
 		// initialize user area if not specified
 		if (System.getProperty(PROP_USER_AREA) == null) {
-			System.setProperty(
-					PROP_USER_AREA,
-					rootStore
-							.getFileStore(
-									new Path(
-											".metadata/.plugins/org.eclipse.orion.server.core/userArea")).toString()); //$NON-NLS-1$
+			System.setProperty(PROP_USER_AREA,
+					rootStore.getFileStore(new Path(".metadata/.plugins/org.eclipse.orion.server.core/userArea")).toString()); //$NON-NLS-1$
 		}
 	}
 
@@ -218,14 +214,19 @@ public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 		aliases.put(alias, location);
 	}
 
+	/**
+	 * Registers decorators supplied by servlets in this bundle
+	 */
+	private void registerDecorators() {
+		//adds the import/export locations to representations
+		maqProjectDecoratorRegistration = bundleContext.registerService(IWebResourceDecorator.class, new MaqettaProjectDecorator(), null);
+	}
+
 	public void start(BundleContext context) throws Exception {
 		bundle = context.getBundle();
 		singleton = this;
 		bundleContext = context;
-	
-		context.registerService(IWebResourceDecorator.class, new MaqettaProjectDecorator(), null);
-		
-		
+
 		packageAdminTracker = new ServiceTracker(context,
 				PackageAdmin.class.getName(), this);
 		packageAdminTracker.open();
@@ -234,9 +235,7 @@ public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 				IExtensionRegistry.class.getName(), this);
 		registryTracker.open();
 		initializeFileSystem();
-		
-		
-
+		registerDecorators();
 	}
 
 	public static Bundle getBundle() {
@@ -244,8 +243,14 @@ public class Activator implements BundleActivator, ServiceTrackerCustomizer,
 	}
 
 	public void stop(BundleContext context) throws Exception {
-
+		unregisterDecorators();
 		bundleContext = null;
 	}
 
+	private void unregisterDecorators() {
+		if (maqProjectDecoratorRegistration != null) {
+			maqProjectDecoratorRegistration.unregister();
+			maqProjectDecoratorRegistration = null;
+		}
+	}
 }

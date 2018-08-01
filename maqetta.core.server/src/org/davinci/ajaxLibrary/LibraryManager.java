@@ -1,18 +1,19 @@
 package org.davinci.ajaxLibrary;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Vector;
+import java.util.logging.Logger;
 
+import maqetta.core.server.user.manager.UserManagerImpl;
 
 import org.davinci.server.internal.Activator;
 import org.davinci.server.internal.IRegistryListener;
-import org.davinci.server.user.IUserManager;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IConfigurationElement;
 import org.eclipse.core.runtime.IPath;
@@ -23,8 +24,10 @@ import org.osgi.framework.Bundle;
 
 public class LibraryManager implements ILibraryManager {
 
-	Library[] installedLibraries;
-	ILibraryFinder[] libFinders;
+	static final private Logger theLogger = Logger.getLogger(LibraryManager.class.getName());
+
+	private Library[] installedLibraries;
+	private ILibraryFinder[] libFinders;
 
 	/*
 	 * static class BundleInfo{ Bundle bundle; IPath path; BundleInfo ( Bundle
@@ -50,7 +53,6 @@ public class LibraryManager implements ILibraryManager {
 			this.ID = ID;
 			this.version = version;
 			this.basePath = basePath;
-
 		}
 
 		BundleLibraryInfo(String id, String version) {
@@ -58,13 +60,20 @@ public class LibraryManager implements ILibraryManager {
 			this.version = version;
 		}
 
-		public void setBasePath(String basePath, String defaultRoot) {
+		public void setBasePath(String basePath, String defaultRoot, String source) {
 			this.basePath = basePath;
 			this.defaultRoot = defaultRoot;
+			this.sourcePath = source;
 		}
 
-		public URL[] find(String path, boolean recurse) {
-			IPath p1 = new Path(this.basePath).append(path);
+		public URL[] find(String path, boolean recurse, boolean useSource) {
+			IPath p1 = null;
+			
+			if(useSource)
+				p1 = new Path(this.sourcePath).append(path);
+			else
+				p1 = new Path(this.basePath).append(path);
+			
 			String name = p1.lastSegment();
 			IPath newBase = p1.removeLastSegments(1);
 
@@ -81,18 +90,13 @@ public class LibraryManager implements ILibraryManager {
 		private URL getUri(String base, String path) {
 			IPath basePath = new Path(base);
 			IPath fullPath = basePath.append(path);
-			try {
-				URL entry = this.bundleBase.getEntry(fullPath.toString());
-				if (entry != null) {
-					return entry;
-				}
-
-				System.out.println("Library file not found! :" + fullPath);
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+			URL entry = this.bundleBase.getEntry(fullPath.toString());
+			if (entry == null) {
+				// TODO: should we throw an Error?
+				theLogger.severe("Library file not found! :" + fullPath);
 			}
-			return null;
+
+			return entry;
 		}
 
 		private URL[] listUri(String base, String path) {
@@ -103,51 +107,55 @@ public class LibraryManager implements ILibraryManager {
 					"*", false));
 
 			while (e.hasMoreElements()) {
-
 				results.add(e.nextElement());
 			}
 
 			return (URL[]) results.toArray(new URL[results.size()]);
 		}
 
-		public String getMetadata() {
-			if (this.metadatapath == null) {
+		public String getMetadata() throws IOException {
+			if (this.metadataPath == null) {
 				return "";
 			}
-			URL metadata = this.bundleBase.getEntry(this.metadatapath
+			URL metadata = this.bundleBase.getEntry(this.metadataPath
 					+ "/widgets.json");
 			InputStream stream = null;
-			try {
-				stream = metadata.openStream();
-			} catch (MalformedURLException e1) {
-				// TODO Auto-generated catch block
-				e1.printStackTrace();
-			} catch (IOException e1) {
-				// TODO Auto-generated catch block
-				e1.printStackTrace();
-			}
 			StringBuffer out = new StringBuffer();
-			byte[] b = new byte[4096];
 			try {
+				stream = new BufferedInputStream(metadata.openStream());
+				byte[] b = new byte[4096];
 				for (int n; (n = stream.read(b)) != -1;) {
 					out.append(new String(b, 0, n));
 				}
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+			} finally {
+				if (stream != null) {
+					stream.close();
+				}
 			}
 			return out.toString();
 		}
 
-		public URL getURL(String path) {
+		public URL getURL(String path, boolean useSource) {
 			// TODO Auto-generated method stub
+			if(useSource){
+				return this.getUri(this.sourcePath, path);
+			}
 			return this.getUri(this.basePath, path);
 		}
-
-		public URL[] listURL(String path) {
+		
+		public URL[] listURL(String path, boolean useSource) {
+			
+			if(useSource){
+				return this.listUri(this.sourcePath, path);
+			}
+			
 			return this.listUri(this.basePath, path);
 		}
 
+
+	    public URL getSourceURL(String path) {
+			return this.getUri(this.sourcePath, path);
+	    }
 	}
 
 	Library findLibrary(String id, String version) {
@@ -177,7 +185,7 @@ public class LibraryManager implements ILibraryManager {
 
 		if (libFinders == null) {
 			Vector libs = new Vector();
-			List libraryElements = ServerManager.getServerManger().getExtensions(IDavinciServerConstants.EXTENSION_POINT_LIBRARYFINDER,	IDavinciServerConstants.EXTENSION_POINT_LIBRARYFINDER);
+			List libraryElements = ServerManager.getServerManager().getExtensions(IDavinciServerConstants.EXTENSION_POINT_LIBRARYFINDER,	IDavinciServerConstants.EXTENSION_POINT_LIBRARYFINDER);
 			if (libraryElements != null) {
 				for (int i = 0; i < libraryElements.size(); i++) {
 
@@ -200,7 +208,7 @@ public class LibraryManager implements ILibraryManager {
 	}
 
 	void initialize() {
-		List extensions = ServerManager.getServerManger().getExtensions(
+		List extensions = ServerManager.getServerManager().getExtensions(
 				IDavinciServerConstants.EXTENSION_POINT_AJAXLIBRARY,
 				IDavinciServerConstants.EP_TAG_AJAXLIBRARY);
 		this.installedLibraries = new Library[extensions.size()];
@@ -227,7 +235,10 @@ public class LibraryManager implements ILibraryManager {
 				libInfo = new BundleLibraryInfo(id, version);
 				this.installedLibraries[count] = libInfo;
 			}
-
+			String required = libraryElement
+					.getAttribute(IDavinciServerConstants.EP_ATTR_REQUIRED);
+			((BundleLibraryInfo) libInfo).setRequired(required);
+			
 			IConfigurationElement[] libraryPathElements = libraryElement
 					.getChildren(IDavinciServerConstants.EP_TAG_LIBRARYPATH);
 
@@ -236,19 +247,21 @@ public class LibraryManager implements ILibraryManager {
 						.getAttribute(IDavinciServerConstants.EP_ATTR_LIBRARYPATH_NAME);
 				String bundlePath = libraryPathElements[i]
 						.getAttribute(IDavinciServerConstants.EP_ATTR_LIBRARYPATH_LOCATION);
-				((BundleLibraryInfo) libInfo).setBasePath(bundlePath,
-						virtualPath);
+				String source = libraryPathElements[i]
+				        .getAttribute(IDavinciServerConstants.EP_ATTR_LIBRARYPATH_SOURCE);
+				((BundleLibraryInfo) libInfo).setBasePath(bundlePath, virtualPath, source);
 			}
+
 			if (libInfo instanceof BundleLibraryInfo) {
 				((BundleLibraryInfo) libInfo).bundleBase = getLibraryBundle(libraryElement);
 			}
 
-			IConfigurationElement[] meta = libraryElement
-					.getChildren("metadata");
+			IConfigurationElement[] meta = libraryElement.getChildren("metadata");
 			for (int i = 0; i < meta.length; i++) {
 				libInfo.setMetadataPath(meta[i].getAttribute("location"));
 			}
-
+			
+			
 			// libInfo.setMetadata( new MetaData(libraryElement));
 		}
 

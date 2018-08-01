@@ -1,7 +1,10 @@
 define([
 	"dojo/_base/declare",
 	"davinci/ve/input/SmartInput",
+	"davinci/commands/CompoundCommand",
 	"davinci/ve/commands/ModifyRichTextCommand",
+	"davinci/XPathUtils",
+	"davinci/html/HtmlFileXPathAdapter",
 	"dijit/Editor",  // we need editor in order for the editor to be displayed
 	"dijit/_editor/plugins/LinkDialog", // need the plugins for the editor toolbar
 	"dijit/_editor/plugins/TextColor", // need the plugins for the editor toolbar
@@ -9,7 +12,8 @@ define([
 	"dojox/html/entities",
 	"dojo/i18n!../nls/ve",
 	"dojo/i18n!dijit/nls/common"
-], function(declare, SmartInput, ModifyRichTextCommand,  Editor, LinkDialog, 
+], function(declare, SmartInput, CompoundCommand, ModifyRichTextCommand, 
+		XPathUtils, HtmlFileXPathAdapter, Editor, LinkDialog, 
 		TextColor, FontChoice, Entities, veNls, commonNls){
 
 
@@ -68,16 +72,18 @@ return declare("davinci.ve.input.RichTextInput", [SmartInput], {
 			value = value.replace(/\n/g, ''); // new lines breaks create widget richtext
 		}
 		values[inlineEditProp]=value;
-		var command;
-			values.richText = Entities.decode( values.richText); // get back to reg html
-			 var customMap = [
+		values.richText = Entities.decode( values.richText); // get back to reg html
+		var customMap = [
 			                   ["\u00a0", "nbsp"]
 		                     ];
         values.richText = Entities.encode( values.richText, customMap);
-		command = new ModifyRichTextCommand(this._widget, values, context);
-
-		this._widget._edit_context.getCommandStack().execute(command);
-		this._widget=command.newWidget;	
+        
+        var compoundCommand = new CompoundCommand();
+		var modifyCommand = new ModifyRichTextCommand(this._widget, values, context);
+		compoundCommand.add(modifyCommand);
+		
+		this._widget._edit_context.getCommandStack().execute(compoundCommand);
+		this._widget=modifyCommand.newWidget;	
 		this._widget._edit_context._focuses[0]._selectedWidget = this._widget; // get the focus on the current node
 		context.select(this._widget, null, false); // redraw the box around the widget
 
@@ -118,7 +124,7 @@ return declare("davinci.ve.input.RichTextInput", [SmartInput], {
 				'<div class="smartInputHelpDiv" > '+
 	        		'<span id="davinci.ve.input.SmartInput_img_help" title="Help" class="inlineEditHelp" > </span>'+
 		        	'<span class="smartInputSpacerSpan" >'+
-		        	'<button id="davinci.ve.input.SmartInput_ok"  dojoType="dijit.form.Button" type="button" class="inlineEditHelpOk" >'+commonNls.buttonOk+'</button> <button id=davinci.ve.input.SmartInput_cancel dojoType="dijit.form.Button" class="inlineEditHelpCancel"> '+commonNls.buttonCancel+'</button>  '+
+		        	'<button id="davinci.ve.input.SmartInput_ok"  dojoType="dijit.form.Button" type="submit" class="inlineEditHelpOk" >'+commonNls.buttonOk+'</button> <button id=davinci.ve.input.SmartInput_cancel dojoType="dijit.form.Button" class="inlineEditHelpCancel"> '+commonNls.buttonCancel+'</button>  '+
 		        	'</span>   '+
 		        '</div> '+
 		        '<div id="davinci.ve.input.SmartInput_div_help" style="display:none;" class="smartInputHelpTextDiv" > '+

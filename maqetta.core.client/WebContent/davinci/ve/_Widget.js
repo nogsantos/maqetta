@@ -2,12 +2,16 @@ define("davinci/ve/_Widget", [
 	"dojo/_base/declare",
 	"./metadata",
 	"../html/CSSModel",
-	"dojox/html/entities"
+	"dojox/html/entities",
+	"davinci/ve/utils/StyleArray",
+	"davinci/ve/utils/GeomUtils"
 ], function(
 	declare,
 	metadata,
 	CSSModel,
-	htmlEntities
+	htmlEntities,
+	StyleArray,
+	GeomUtils
 ) {
 var arrayEquals = function(array1, array2, func){
 	if(array1 == array2){
@@ -97,6 +101,14 @@ return declare("davinci.ve._Widget", null, {
 
 		return this._getChildren(attach);
 	},
+	
+	indexOf: function(child) {
+		var helper = this.getHelper();
+		if (helper && helper.indexOf) {
+			return helper.indexOf(this, child); 
+		}
+		return dojo.indexOf(this.getChildren(), child);
+	},
 
 	_getChildren: function(attach) {
 		var containerNode = this.getContainerNode(),
@@ -163,6 +175,10 @@ return declare("davinci.ve._Widget", null, {
 	},
 
 	indexOf: function(child) {
+		var helper = this.getHelper();
+		if (helper && helper.indexOf) {
+			return helper.indexOf(this, child); 
+		}
 		return dojo.indexOf(this.getChildren(), child);
 	},
 
@@ -170,30 +186,46 @@ return declare("davinci.ve._Widget", null, {
 		return this.styleNode || this.domNode; // for Textarea on FF2
 	},
 
-	addChild: function (child,index)
-	{
-		if(!child) {
-			return;
-		}
-
+	addChild: function(child, index) {
 		var containerNode = this.getContainerNode();
-		if(containerNode) {
-			//TODO use dojo.place?
-			if(index === undefined || index === -1) {
-				containerNode.appendChild(child.domNode);
+		if (containerNode) {
+			// add to model (source)
+			if (index === undefined || index === null || index === -1) {
 				this._srcElement.addChild(child._srcElement);
-			}else{
+			} else {
 				var children = this.getChildren();
-				if(index < children.length) {
-					containerNode.insertBefore(child.domNode, children[index].domNode);
+				if (index < children.length) {
 					this._srcElement.insertBefore(child._srcElement,children[index]._srcElement);
-				}else{
-					containerNode.appendChild(child.domNode);
+				} else {
 					this._srcElement.addChild(child._srcElement);
 				}
 			}
+
+			// add to VE DOM
+			var helper = this.getHelper();
+			if (helper && helper.addChild) {
+				helper.addChild(this, child, index);
+			} else {
+				this._addChildToDom.apply(this, arguments);
+			}
 		}
 	},
+
+	_addChildToDom: function(child, index) {
+		var node = child.domNode;
+		var containerNode = this.getContainerNode();
+		if (index === undefined || index === null || index === -1) {
+			containerNode.appendChild(node);
+		} else {
+			var children = this.getChildren();
+			if (index < children.length) {
+				containerNode.insertBefore(node, children[index].domNode);
+			} else {
+				containerNode.appendChild(node);
+			}
+		}
+	},
+
 	getParent: function() {
 		return require("davinci/ve/widget").getEnclosingWidget(this.domNode.parentNode) || this.domNode.parentNode;
 	},
@@ -255,21 +287,18 @@ return declare("davinci.ve._Widget", null, {
 	},
 
 	getMarginBox: function() {
-		var node = this.getStyleNode();
-		if(!node) {
-			return undefined;
+		var node = this.domNode;
+		var box = null;
+		var helper = this.getHelper();
+		if(helper && helper.getMarginBoxPageCoords){
+			box = helper.getMarginBoxPageCoords(this);
+		} else {
+			box = GeomUtils.getMarginBoxPageCoords(node);
 		}
-
-		var box = dojo.position(node),
-			parentNode = node.offsetParent;
-		if(parentNode) {
-			var c = dojo.position(parentNode),
-				e = dojo._getMarginExtents(node);
-			box.l = box.x - c.x + parentNode.scrollLeft - Math.round(e.l);
-			box.t = box.y - c.y + parentNode.scrollTop - Math.round(e.t);
-		}else{
-			box.l = box.t = 0;
-		}
+		box.l -= GeomUtils.getScrollLeft(node);
+		box.t -= GeomUtils.getScrollTop(node);
+		box.x = box.l;
+		box.y = box.t;
 		return box;
 	},
 
@@ -315,7 +344,7 @@ return declare("davinci.ve._Widget", null, {
 		/* if ordering is given, respect it */
 		
 		if(dojo.isArray(v)){
-			var vArray = davinci.ve.states.normalizeArray("style", this, name, v);
+			var vArray = davinci.ve.states.normalizeArray("style", this.domNode, name, v);
 			for(var i = 0;i<vArray.length;i++) {
 				for(var name in vArray[i]){	// Should be only one property in each array item
 					value = vArray[i][name];
@@ -327,7 +356,7 @@ return declare("davinci.ve._Widget", null, {
 		}else{
 			for(var name in v){
 				
-				value = davinci.ve.states.normalize("style", this, name, v[name]);
+				value = davinci.ve.states.normalize("style", this.domNode, name, v[name]);
 				if(value !== undefined && value != "" && value!=null) {
 					s += name + ": " + v[name] + "; ";
 				}
@@ -410,7 +439,8 @@ return declare("davinci.ve._Widget", null, {
 							}
 						}
 					}else{
-						if(property.datatype == "boolean" && value != property.defaultValue) {
+						// handle bool/numeric
+						if((property.datatype == "boolean" || property.datatype == "number") && value != property.defaultValue) {
 							data.properties[name] = value;
 						// HACK: There's probably a better way to do this with the new model, just a stopgap measure until Phil takes a look
 						} else if (property.datatype && (property.datatype.indexOf("dijit") == 0 || property.datatype == "object" && property.isData)) {
@@ -441,7 +471,8 @@ return declare("davinci.ve._Widget", null, {
 			data = this._getData( options);
 		}
 
-		data.states=dojo.clone(this.states);
+		data.maqAppStates=dojo.clone(this.domNode._maqAppStates);
+		data.maqDeltas=dojo.clone(this.domNode._maqDeltas);
 		if(!data.properties)
 			data.properties = {};
 
@@ -453,9 +484,9 @@ return declare("davinci.ve._Widget", null, {
 			}
 		}
 		
-		// Find "on*" event attributes that are in the model and
+		// Find "on*" event attributes and a[href] attributes that are in the model and
 		// place on the data object. Note that Maqetta strips
-		// on* event attributes from the DOM that appears on visual canvas.
+		// on* event attributes and href attributes from the DOM that appears on visual canvas.
 		// Upon creating new widgets, the calling logic needs to 
 		// put these attributes in model but not in visual canvas.
 		var srcElement = this._srcElement;
@@ -464,6 +495,8 @@ return declare("davinci.ve._Widget", null, {
 		for(var i=0; i<attributes.length; i++) {
 			var attribute = attributes[i];
 			if(attribute.name.substr(0,2).toLowerCase()=="on" ) {
+				data.properties[attribute.name] = attribute.value;
+			}else if(srcElement.tag.toLowerCase() == 'a' && attribute.name.toLowerCase()=='href'){
 				data.properties[attribute.name] = attribute.value;
 			}
 		}
@@ -497,7 +530,7 @@ return declare("davinci.ve._Widget", null, {
 		return this.domNode.nodeName.toLowerCase();
 	},
 
-	getStyleValues: function( options) {
+	getStyleValues: function() {
 
 		function removeProperty(propName){
 			for(var j=values.length-1; j>=0; j--){
@@ -512,6 +545,7 @@ return declare("davinci.ve._Widget", null, {
 
 		var values = require("davinci/ve/widget").parseStyleValues(text);
 
+/*FIXME: DELETE THIS. Leaving it in temporarily in case in last-minute Preview 6 testing we discover a need for this logic
 		var o;
 		if(style) {
 			if(style.position == "absolute" || style.position == "relative") {
@@ -542,7 +576,43 @@ return declare("davinci.ve._Widget", null, {
 				}
 			}
 		}
+*/
+		var parent = this.getParent();
+		//FIXME: This is Dojo-specific logic within a toolkit-independent file
+		if(style && parent && parent.dijitWidget && parent.dijitWidget.addChild && !parent.acceptsHTMLChildren) {
+			removeProperty('position');
+			removeProperty('left');
+			removeProperty('top');
+		}
 		return values;
+	},
+
+	/**
+	 * Returns an associative array holding all CSS properties for a given widget
+	 * for all application states that have CSS values.
+	 * The associative array is indexed by the application states in the current page,
+	 * with Normal state named 'undefined'. In the associative array, each property
+	 * is a valueArray: an array of objects, where each object is {<propname>:<propvalue>}.
+	 * For example:
+	 * {'undefined':[{'color':'red},{'font-size':'12px'}],'State1':[{'font-size':'20px'}]}
+	 */
+	getStyleValuesAllStates: function(){
+		//FIXME: Normal states shouldn't accidentally become 'undefined'
+		var normalStyleArray = this.getStyleValues();
+		var styleValuesAllStates = {'undefined':normalStyleArray};
+		var states = this.domNode._maqDeltas;
+		if(states){
+			for(var state in states){
+				if(states[state].style){
+					if(state == 'undefined'){
+						styleValuesAllStates[state] = StyleArray.mergeStyleArrays(normalStyleArray, states[state].style);
+					}else{
+						styleValuesAllStates[state] = states[state].style;
+					}
+				}
+			}
+		}
+		return styleValuesAllStates;
 	},
 
 	_updateSrcStyle: function() {
@@ -553,15 +623,12 @@ return declare("davinci.ve._Widget", null, {
 			this._srcElement.removeAttribute("style");
 		}
 	},
-
-	setStyleValues: function( values) {
-		
+	
+	_getStyleString: function(values){
 		if(!values) {
-			return;
+			return '';
 		}
-		var styleDomNode = this.getStyleNode();
 		var v = this._sortStyleValues(values);
-		
 		/* we used to retrieve the style properties as an array, then flatten the values.
 		 * 
 		 * changed to serialize it as text, then reset the style attribute 
@@ -588,20 +655,60 @@ return declare("davinci.ve._Widget", null, {
 			}
 		}
 		*/
-		
 		var text = this._styleText(v);
+		return text;
+	},
+
+	/**
+	 * Updates element.style for current widget as shown on page canvas
+	 * (The values passed in might be state-specific)
+	 */
+	setStyleValuesCanvas: function( values) {	
+		if(!values) {
+			return;
+		}
+		var text = this._getStyleString(values);
+		var styleDomNode = this.getStyleNode();
+		
 		/* reset the style attribute */
 		dojo.attr(styleDomNode, "style", text);
 		
 		if (this.dijitWidget)
 			this.dijitWidget.style = text;
+	},
+	
+	/**
+	 * Update element.style in model
+	 */
+	setStyleValuesModel: function( values) {
+		var text = this._getStyleString(values);
 		if (text.length>0)
 			this._srcElement.addAttribute("style",text);
 		else
 			this._srcElement.removeAttribute("style");
-
-		//style.cssText = text;
-
+	},
+	
+	/**
+	 * Returns an associative array holding all CSS properties for a given widget
+	 * for all application states that have CSS values.
+	 * The associative array is indexed by the application states in the current page,
+	 * with Normal state named 'undefined'. In the associative array, each property
+	 * is a valueArray: an array of objects, where each object is {<propname>:<propvalue>}.
+	 * For example:
+	 * {'undefined':[{'color':'red},{'font-size':'12px'}],'State1':[{'font-size':'20px'}]}
+	 */
+	setStyleValuesAllStates: function(styleValuesAllStates){
+		this.domNode._maqDeltas = undefined;
+		if(styleValuesAllStates){
+			for(var state in styleValuesAllStates){
+				var styleArray = styleValuesAllStates[state];
+				//FIXME: Normal states shouldn't accidentally become 'undefined'
+				if(state === 'undefined'){
+					state = undefined;
+				}
+				davinci.ve.states.setStyle(this.domNode, state, styleArray, true /*silent*/);
+			}
+		}
 	},
 
 	isLayout: function() {
@@ -610,15 +717,37 @@ return declare("davinci.ve._Widget", null, {
 
 	resize: function() {
 	},
-
-	removeChild: function( /*Widget*/child) {
-		if(!child) {
-			return;
+	
+	/* if the widget is a child of a dijit Container widget 
+	 * we may need to refresh the parent to make it all look correct in page editor
+	 * FIXME: need to factor out dijit-specific code from this base class
+	 */ 
+	refresh: function(){
+		var parent = this.getParent();
+		if (parent.dijitWidget){
+			parent.refresh();
+		} else if (this.resize){
+			this.resize();
 		}
-		var containerNode = this.getContainerNode();
-		if(containerNode) {
-			containerNode.removeChild(child.domNode);
-			this._srcElement.removeChild(child._srcElement);
+	},
+
+	removeChild: function(/*Widget*/child) {
+		// remove from model (source)
+		this._srcElement.removeChild(child._srcElement);
+
+		// remove from VE DOM
+		var helper = this.getHelper();
+		if (helper && helper.removeChild) {
+			helper.removeChild(this, child);
+		} else {
+			this._removeChildFromDom.apply(this, arguments);
+		}
+	},
+
+	_removeChildFromDom: function(child) {
+		var node = child.domNode;
+		if (node && node.parentNode) {
+			node.parentNode.removeChild(node);
 		}
 	},
 
@@ -642,7 +771,7 @@ return declare("davinci.ve._Widget", null, {
 		for(var name in properties) {
 			var property = properties[name];
 			// The following check on "property" will result in false value for empty strings
-			if(property || typeof property == "boolean") {
+			if(property || typeof property == "boolean" || typeof property == "number") {
 				var value=this._stringValue(name, property);
 				if (!modelOnly) {
 				    this.properties[name] = value;
@@ -668,6 +797,7 @@ return declare("davinci.ve._Widget", null, {
 			return;
 		}
 		if (this.dijitWidget) {
+			// XXX Dijit-specific code, doesn't belong here.
 			this.dijitWidget.destroyRecursive();
 		} else {
 			dojo.forEach(this.getChildren(),function(each) { each.destroyWidget(); });

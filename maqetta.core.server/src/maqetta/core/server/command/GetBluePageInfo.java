@@ -9,6 +9,7 @@ import org.davinci.server.user.IUser;
 import org.davinci.server.user.IPerson;
 import org.davinci.server.user.IPersonManager;
 import org.maqetta.server.Command;
+import org.maqetta.server.IDavinciServerConstants;
 import org.maqetta.server.ServerManager;
 
 public class GetBluePageInfo extends Command {
@@ -20,19 +21,28 @@ public class GetBluePageInfo extends Command {
 	public void handleCommand(HttpServletRequest req, HttpServletResponse resp,
 			IUser user) throws IOException {
 		try {
+			String usernameTypeaheadEnabledString = ServerManager.getServerManager().
+					getDavinciProperty(IDavinciServerConstants.USERNAME_TYPEAHEAD_ENABLED);
+			Boolean usernameTypeaheadEnabled = usernameTypeaheadEnabledString==null || usernameTypeaheadEnabledString.equals("true");
+
 			String name = req.getParameter("searchname");
 			String count = req.getParameter("count");
 			String startString = req.getParameter("start");
 			String type = req.getParameter("type");
 
-			IPersonManager personManager = ServerManager.getServerManger().getPersonManager();
+			IPersonManager personManager = ServerManager.getServerManager().getPersonManager();
 
 			if("photo".equals(type)){
 				responseString = personManager.getPhotoRepositoryPath();
 			}else{
 				int resultNumber = Integer.parseInt(count);
 				int start = Integer.parseInt(startString);
-				IPerson[] persons = personManager.getPersons(name, resultNumber, start);
+				IPerson[] persons;
+				if(usernameTypeaheadEnabled){
+					persons = personManager.getPersons(name, resultNumber, start);
+				}else{
+					persons = new IPerson[0];
+				}
 				responseString = arrayToJson(persons);
 			}
 		} catch (Exception e) {
@@ -62,7 +72,7 @@ public class GetBluePageInfo extends Command {
 				buf.append("'");
 				buf.append(":");
 				buf.append("'");
-				buf.append(p.getUserName() + " (" + p.getEmail() + ")");
+				buf.append(p.getEmail()); //buf.append(p.getUserID() + " (" + p.getEmail() + ")");
 				buf.append("'");
 				buf.append(",");
 				buf.append("'");
@@ -70,7 +80,7 @@ public class GetBluePageInfo extends Command {
 				buf.append("'");
 				buf.append(":");
 				buf.append("'");
-				buf.append(p.getUserName());
+				buf.append(p.getUserID());
 				buf.append("'");
 				buf.append("}");
 				buf.append(",");

@@ -1,68 +1,129 @@
 define([
 	"dojo/_base/declare",
-	"dijit/_Widget",
-	"dijit/_Templated",
-	"davinci/review/util",
+	"davinci/XPathUtils",
+	"davinci/maqetta/AppStates",
+	"davinci/review/Review",
+	"davinci/Runtime",
+	"davinci/Workbench",
+	"dijit/_WidgetBase",
+	"dijit/_TemplatedMixin",
 	"dijit/Menu",
 	"dijit/MenuItem",
 	"dijit/form/DropDownButton",
-	"dojo/i18n!./nls/widgets"
-], function(declare, _Widget, _Templated, util, Menu, MenuItem, DropDownButton, widgetsNls) {
-	
+	"dojo/date/locale",
+	"dojo/date/stamp",
+	"dojo/Deferred",
+	"dojo/string",
+	"dojo/i18n!./nls/widgets",
+	"dojo/text!./templates/Comment.html",
+	"dojo/text!./templates/MailFailureDialogContent.html"
+], function(declare, XPathUtils, AppStates, Review, Runtime, Workbench, _Widget, _Templated, Menu, MenuItem, DropDownButton, locale, stamp, Deferred, dojostring, widgetsNls, commentTemplate, warningString) {
+
+// AppStates functions are only available on the prototype object
+var States = AppStates.prototype;
+
+/*
+ * Transform the date passed to a relative time against current time on server.
+ * E.g. current time is 2010-12-28 4:24:00, time passed: 2010-12-28 4:20:00, then
+ * the relative time is "4 mins ago".
+ */
+//TODO: i18n
+var toRelativeTime = function(date, baseDate, threshold) {
+	var diff = date.getTime() - baseDate.getTime();
+	var direction = diff < 0 ? "ago" : "later";
+	var day, hour, min, second;
+
+	diff = Math.floor( Math.abs( diff ) / 1000 );
+
+	if(diff <= 60) return "just now";
+
+	if ( threshold && diff > threshold )
+		return locale.format(date, {formatLength:'short',selector:'date'});
+
+	second = diff % 60;
+	diff = Math.floor( diff / 60 ); 
+	min = diff % 60;
+	diff = Math.floor( diff / 60 );
+	hour = diff % 24;
+	diff = Math.floor( diff / 24 );
+	day = diff;
+
+	var timeStr = day ? day + " days ": hour ? hour + " hours ":min ? min + " mins ":'';
+	return timeStr + direction;
+};
+
 return declare("davinci.review.widgets.Comment", [_Widget, _Templated], {
 
-	templateString: dojo.cache("davinci", "review/widgets/templates/Comment.html"),
+	templateString: commentTemplate,
 
-	postMixInProperties : function() {
+	postMixInProperties: function() {
 		this.inherited(arguments);
-		/*
-		 * HACK: dijit pulls template substitutions from 'this'. copy values out of NLS
-		 * lang object into properties on this object. hope they don't collide.
-		 */
-		this.by = widgetsNls.by;
-		this.edit = widgetsNls.edit;
-		this.reply = widgetsNls.reply;
-		this.typeLabel = widgetsNls.typeLabel;
-		this.severityLevel = widgetsNls.severityLevel;
-		this.statusLabel = widgetsNls.statusLabel;
-
+		dojo.mixin(this, widgetsNls);
 	},
 
 	VISIBLE_PART_LENGTH: 80, // By default, how many leading characters of the comment will be shown.
 
 	postCreate: function() {
+		this._createdPromise = new Deferred();
 		if (!this.existed) {
-			// Ensure that the comment is created on the server when it is "newed".
-			var location = davinci.Workbench.location().match(/http:\/\/.*:\d+\//);
-			dojo.xhrPost({
-				url: location + "maqetta/cmd/addComment",
+			var urlParams = {
+				id: this.commentId,
+				subject: this.subject,
+				content: this.content,
+				ownerId: this.ownerId,
+				email: this.email,
+				previous: this.previous,
+				next: this.next,
+				pageState: this.pageState,
+				pageStateList: this.pageStateList ? dojo.toJson(this.pageStateList) : '',
+				viewScene: this.viewScene,
+				viewSceneList: this.viewSceneList ? dojo.toJson(this.viewSceneList) : '',
+				designerId: this.designerId,
+				pageName: this.pageName,
+				replyTo: this.replyTo || "root",
+				drawingJson: this.drawingJson
+			};
+			if (Runtime.currentEditor && Runtime.currentEditor.getContext().getPreference("zazl")) { // FIXME: preferences should be available without going through Context. #3804
+				urlParms.zazl = true;
+			}
+
+			// Ensure that the comment is created on the server when it is "needed".
+			dojo.xhrGet({
+				url: "cmd/addComment",
 				handleAs: "json",
-				content: {
-					id: this.commentId,
-					subject: this.subject,
-					content: this.content,
-					ownerId: this.ownerId,
-					previous: this.previous,
-					next: this.next,
-					pageState: this.pageState,
-					viewScene: this.viewScene,
-					designerId: this.designerId,
-					pageName: this.pageName,
-					replyTo: this.replyTo || 0,
-					drawingJson: this.drawingJson,
-					status: this.status,
-					type: this.type,
-					severity: this.severity
-				},
+				content: urlParams,
 				error: dojo.hitch(this, function(response) {
 					dojo.publish("/davinci/review/commentAddedError", [this]);
 					var msg = response.responseText;
 					msg = msg.substring(msg.indexOf("<title>")+7, msg.indexOf("</title>"));
-					davinci.Runtime.handleError(dojo.string.substitute(widgetsNls.errorAddingCom, [response, msg]));
+					Runtime.handleError(dojo.string.substitute(widgetsNls.errorAddingCom, [response, msg]));
 				})
-			}).then(dojo.hitch(this, "_populate"));
+			}).then(dojo.hitch(this, function(result) {
+				// We want to grab hold of the creation time from the server
+				this.created = result.created;
+				
+				// Populate the screen with the new comment
+				this._populate(this);
+				
+				// Resolve the promise that the created time stamp is available
+				this._createdPromise.resolve(this.created);
+
+				if (result.emailResult && result.emailResult !== 'OK') {
+					// Server failed to send an email notification (server is either
+					// unreachable or not configured). Display message to user.
+					var dialogContent = dojostring.substitute(warningString, {
+							htmlContent: result.emailResult,
+							inviteNotSent: widgetsNls.commentNotSent,
+							mailFailureMsg: widgetsNls.commentMailFailureMsg
+					});
+					Workbench.showMessage(widgetsNls.warning, dialogContent);
+				}
+			}.bind(this)));
 		} else {
 			this._populate(this);
+			
+			// Resolve the promise that the created time stamp is available
+			this._createdPromise.resolve(this.created);
 		}
 
 		this.comments = []; // Hold the replies to this comment
@@ -71,27 +132,22 @@ return declare("davinci.review.widgets.Comment", [_Widget, _Templated], {
 		this.focused = false;
 
 		// Populate the comment body
-		var color = this.color = davinci.Runtime.getColor(this.ownerId);
+		var color = this.color = Review.getColor(this.email);
 		this.subjectNode.innerHTML = this.subject;
 		dojo.style(this.subjectNode, "color", color);
-		this.ownerName.innerHTML = this.ownerId;
+		var ownerDisplayName = Runtime.getUserDisplayName({
+			email: this.email, 
+			userId: this.ownerId,
+			userDisplayName: this.displayName
+		});
+		this.ownerName.innerHTML = ownerDisplayName;
 		dojo.style(this.ownerName, "color", color);
 		this.contentNode.innerHTML = this.content;
 		this._ajustLengthOfCommentContent(true);
-		this.commentType.innerHTML = this.type;
-		dojo.addClass(this.commentSeverity, "severity" + this.severity);
 
-		// Rendering that has something to do with a reply comment
-		if (!this.isReply()) {
-			if (this.isPageOwner()) {
-				this._constructStatus(this.status);
-			} else {
-				this.commentStatus.innerHTML = this.status;
-			}
-		} else {
+		if (this.isReply()) {
+			//Let's not show subject line on replies
 			dojo.addClass(this.subjectNode, "displayNone");
-			dojo.style(this.domNode, "borderTop", "1px solid #CCCCCC");
-			dojo.addClass(this.commentStatusLabel,"displayNone");
 		}
 
 		this.connect(this.imgNode, "click", "_toggleReplies");
@@ -104,13 +160,21 @@ return declare("davinci.review.widgets.Comment", [_Widget, _Templated], {
 			dojo.style(this.editButton, "display", "none");
 			dojo.style(this.replyButton, "display", "none");
 		}
-		if (davinci.Runtime.userName != this.ownerId) {
+		if (Runtime.userName != this.ownerId) {
 			dojo.style(this.editButton,"display","none");
 		}
-		if (this.status == "Close") {
-			dojo.style(this.editButton,"display","none");
-			dojo.style(this.replyButton,"display","none");
-		}
+	},
+	
+	// Provide a means for someone to get the created time stamp (which is 
+	// created by a server call in postCreate
+	getCreated: function() {
+		var promise = new Deferred();
+		
+		this._createdPromise.then(function(created) {
+			promise.resolve(created);
+		});
+
+		return promise;
 	},
 
 	refresh: function() {
@@ -120,92 +184,42 @@ return declare("davinci.review.widgets.Comment", [_Widget, _Templated], {
 			dojo.style(this.editButton, "display", "none");
 			dojo.style(this.replyButton, "display", "none");
 		}
-		if (davinci.Runtime.userName != this.ownerId) {
+		if (Runtime.userName != this.ownerId) {
 			dojo.style(this.editButton, "display", "none");
-		}
-		if (this.status == "Close") {
-			dojo.style(this.editButton, "display", "none");
-			dojo.style(this.replyButton, "display", "none");
 		}
 	},
 
 	_populate: function(result) {
 		// summary:
 		//		Fill the time, comment order. These info need to be retrieved from the server
-		this.created = parseInt(result.created);
-		this.createTime.innerHTML = util.toRelativeTime(util.toLocalTime(new Date(parseInt(result.created))), new Date(), 604800 );
-	},
-
-	_constructStatus : function(defaultLabel) {
-		var statusList = new Menu();
-		this.commentStatus = new DropDownButton( {
-			label: defaultLabel,
-			iconClass: "dijitEditorIcon emptyIcon",
-			dropDown: statusList
-		}, this.commentStatus);
-
-		statusList.addChild(new MenuItem({
-			label: widgetsNls.open,
-			onClick: dojo.hitch(this, "_setStatusBtnLabel", "Open")
-		}));
-
-		statusList.addChild(new MenuItem({
-			label: widgetsNls.close,
-			onClick: dojo.hitch(this, "_setStatusBtnLabel", "Close")
-		}));
-		if(!dojo.hasClass(this.commentStatus.domNode.parentNode, "commentTheme")){
-			dojo.addClass(this.commentStatus.domNode.parentNode, "commentTheme");
-		}
-	},
-
-	_setStatusBtnLabel: function(label) {
-		this.commentStatus.set("label", label);
-		this.status = label;
-		this.update({statusChanged:true});
+		this.createdFormatted = stamp.fromISOString(result.created);
+		this.createTime.innerHTML = toRelativeTime(this.createdFormatted, new Date(), 604800);
 	},
 
 	update : function(arg) {
 		this.subjectNode.innerHTML = this.subject;
 		this.contentNode.innerHTML = this.content;
-		this.commentType.innerHTML = this.type;
 		this._ajustLengthOfCommentContent(true);
-		dojo.removeClass(this.commentSeverity, "severityLow");
-		dojo.removeClass(this.commentSeverity, "severityMedium");
-		dojo.removeClass(this.commentSeverity, "severityHigh");
-		dojo.addClass(this.commentSeverity, "severity" + this.severity);
-		if (this.commentStatus.set) {
-			this.commentStatus.set("label", this.status);
-		}
-		// Indicate that this is a change of the comment status (open/close)
-		var updateStatus = arg && arg.statusChanged;
-		var location = davinci.Workbench.location().match(/http:\/\/.*:\d+\//);
-		dojo.xhrPost({
-			url: location + "maqetta/cmd/updateComment",
+		dojo.xhrGet({
+			url: "cmd/updateComment",
 			handleAs: "json",
 			content: {
 				id: this.commentId,
 				designerId: this.designerId,
-				status: this.status,
 				subject:  this.subject,
 				content:  this.content,
-				pageState:  this.pageState,
+				pageState: this.pageState,
+				pageStateList: this.pageStateList ? dojo.toJson(this.pageStateList) : '',
 				viewScene: this.viewScene,
-				drawingJson: this.drawingJson,
-				type: this.type,
-				severity: this.severity,
-				isUpdateStatus: updateStatus
+				viewSceneList: this.viewSceneList ? dojo.toJson(this.viewSceneList) : '',
+				drawingJson: this.drawingJson
 			},
 			error: function(response) {
 				var msg = response.responseText;
 				msg = msg.substring(msg.indexOf("<title>")+7, msg.indexOf("</title>"));
-				davinci.Runtime.handleError(dojo.string.substitute(widgetsNls.errorUpdateCom, [response, msg]));
+				Runtime.handleError(dojo.string.substitute(widgetsNls.errorUpdateCom, [response, msg]));
 			}
-		}).then(dojo.hitch(this,function() {
-			if (updateStatus) {
-				// Only status (close/open) change needs to be addressed
-				dojo.publish("/davinci/review/commentStatusChanged", [this, this.status]);
-			}
-		}));
+		});
 	},
 
 	_editComment: function() {
@@ -239,13 +253,13 @@ return declare("davinci.review.widgets.Comment", [_Widget, _Templated], {
 		// summary: 
 		//		Indicate if this is a reply
 //		return this.depth > 0;
-		return this.replyTo != "0";
+		return this.replyTo != "root";
 	},
 
 	isPageOwner: function() {
 		// summary:
 		//		Indicate if the reviewer is the page author
-		return this.designerId == davinci.Runtime.userName;
+		return this.designerId == Runtime.userName;
 	},
 
 	appendReply: function(/*davinci.review.widgets.Comment*/ reply) {
@@ -376,9 +390,6 @@ return declare("davinci.review.widgets.Comment", [_Widget, _Templated], {
 	},
 
 	enable: function() {
-		if (this.commentStatus.set) {
-			this.commentStatus.set("disabled", false);
-		}
 		dojo.removeClass(this.domNode, "disabled");
 		dojo.removeClass(this.mainBody, "commentBodyDisabled");
 		dojo.style(this.subjectNode, "color", this.color);
@@ -387,9 +398,6 @@ return declare("davinci.review.widgets.Comment", [_Widget, _Templated], {
 	},
 
 	disable: function() {
-		if (this.commentStatus.set) {
-			this.commentStatus.set("disabled", true);
-		}
 		dojo.addClass(this.domNode, "disabled");
 		dojo.removeAttr(this.mainBody, "style");
 		dojo.addClass(this.mainBody, "commentBodyDisabled");
@@ -400,6 +408,60 @@ return declare("davinci.review.widgets.Comment", [_Widget, _Templated], {
 
 	getBody: function() {
 		return this.mainBody;
+	},
+	
+	/**
+	 * Set current states and scenes based on comment.pageStateList and comment.viewSceneList
+	 */
+	setStatesScenes: function() {
+		var e = davinci.Workbench.getOpenEditor(); 
+		var ctx = (e && e.getContext) ? e.getContext() : null;
+		var rootNode = ctx ? ctx.rootNode : null;
+		var doc = rootNode && rootNode.ownerDocument;
+		if(doc){
+			if(this.pageStateList){
+				// Go backwards so that highest-level states are set last
+				for(var i=this.pageStateList.length-1; i>-0; i--){
+					var o = this.pageStateList[i];
+					var stateContainerNode = o.id ? doc.getElementById(o.id) : null;
+					if(!stateContainerNode && o.xpath){
+						var query = XPathUtils.toCssPath(o.xpath);
+						stateContainerNode = doc.querySelector(query);
+					}
+					if(stateContainerNode){
+						States.setState(o.state, stateContainerNode, { updateWhenCurrent:true });
+					}
+				}
+			}
+			if(this.viewSceneList && ctx.sceneManagers){
+				for(var smIndex in this.viewSceneList){
+					var sm = ctx.sceneManagers[smIndex];
+					if(sm){
+						var viewSceneItems = this.viewSceneList[smIndex];
+						// Go backwards so that highest-level scenes are set last
+						for(var j=viewSceneItems.length-1; j>=0; j--){
+							var o = viewSceneItems[j];
+							var sceneContainerNode = o.scId ? doc.getElementById(o.scId) : null;
+							if(!sceneContainerNode && o.scXpath){
+								var query = XPathUtils.toCssPath(o.scXpath);
+								sceneContainerNode = doc.querySelector(query);
+							}
+/*FIXME: Probably should fix the signature of selectScene. If so, then this logic would be needed
+							var sceneNode = o.sceneId ? doc.getElementById(o.sceneId) : null;
+							if(!sceneNode && o.sceneXpath){
+								var query = XPathUtils.toCssPath(o.sceneXpath);
+								sceneNode = doc.querySelector(query);
+							}
+							if(sceneContainerNode && sceneNode){
+*/
+							if(sceneContainerNode && o.sceneId){
+								sm.selectScene({sceneContainerNode:sceneContainerNode, sceneId:o.sceneId});
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 });

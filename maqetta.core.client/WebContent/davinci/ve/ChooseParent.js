@@ -1,9 +1,11 @@
 define([
         "dojo/_base/declare",
+    	"davinci/Runtime",
         "./widget",
         "./_Widget",
-        "./metadata"
-], function(declare, widget, _Widget, metadata) {
+        "./metadata",
+    	"davinci/ve/utils/GeomUtils"
+], function(declare, Runtime, widget, _Widget, metadata, GeomUtils) {
 
 return declare("davinci.ve.ChooseParent", null, {
 	
@@ -23,10 +25,13 @@ return declare("davinci.ve.ChooseParent", null, {
 	 * 			Data for the dropped widget. (This routine only looks for 'type' property)
 	 * @param climb {boolean}
 	 * 			Whether to climb the DOM looking for matches.
+	 * @param params {Object}
+	 *			Various properties representing current state of app. So far, only this:
+	 *				params.absolute {boolean} - widget will be added using position:absolute
 	 * @return an array of widgets which are possible valid parents for the dropped widget
 	 * @type davinci.ve._Widget
 	 */
-	getAllowedTargetWidget: function(target, data, climb) {
+	getAllowedTargetWidget: function(target, data, climb, params) {
 		// get data for widget we are adding to page
 		var getEnclosingWidget = widget.getEnclosingWidget,
 			newTarget = target,
@@ -39,6 +44,7 @@ return declare("davinci.ve.ChooseParent", null, {
 		var _this = this;
 		data.forEach(function(elem) {
 			children.push({
+				type:elem.type,
 				allowedParent: metadata.getAllowedParent(elem.type),
 				classList: _this.getClassList(elem.type)
 			});
@@ -48,7 +54,7 @@ return declare("davinci.ve.ChooseParent", null, {
 			var parentType = newTarget instanceof _Widget ?
 					newTarget.type : newTarget._dvWidget.type;
 			var parentClassList = this.getClassList(parentType);
-			if(this.isAllowed(children, newTarget, parentType, parentClassList)){
+			if(this.isAllowed(children, newTarget, parentType, parentClassList, params)){
 				allowedParentList.push(newTarget);
 			}
 			newTarget = getEnclosingWidget(newTarget);
@@ -59,7 +65,7 @@ return declare("davinci.ve.ChooseParent", null, {
 	
 	// Returns 'true' if the dropped widget(s) is(are) allowed as a child of the
 	// given parent.
-	isAllowed: function(children, parent, parentType, parentClassList) {
+	isAllowed: function(children, parent, parentType, parentClassList, params) {
 		
 		// returns 'true' if any of the elements in 'classes' are in 'arr'
 		function containsClass(arr, classes) {
@@ -83,7 +89,20 @@ return declare("davinci.ve.ChooseParent", null, {
 								  containsClass(allowedChild, child.classList));
 			var isAllowedParent = child.allowedParent[0] === "ANY" ||
 								  containsClass(child.allowedParent, parentClassList);
-			return isAllowedChild && isAllowedParent;
+			var helper = widget.getWidgetHelper(child.type);
+			if (helper && helper.isAllowed) {
+				return helper.isAllowed({
+					childType: child.type,
+					childClassList: child.classList,
+					parentType: parentType,
+					parentClassList: parentClassList,
+					absolute: params.absolute,
+					isAllowedChild: isAllowedChild,
+					isAllowedParent: isAllowedParent
+				});
+			} else {
+				return isAllowedChild && isAllowedParent;
+			}
 		});
 	},
 
@@ -214,65 +233,54 @@ return declare("davinci.ve.ChooseParent", null, {
 			if(idx !== undefined){
 				if(!this._cursorSpan){
 					this._cursorSpan = dojo.create('span', {className:'editCursor'});
-					this._timer = context.getGlobal().setInterval(function(node, context){
-						dojo.toggleClass(node, 'editCursorBlink');
-					}, 400, this._cursorSpan, context);
+					var userWin = context.getGlobal();
+					if(userWin){
+						this._timer = userWin.setInterval(function(node, context){
+							var currentEditor = Runtime.currentEditor;
+							var currentContext = (currentEditor.getContext && currentEditor.getContext());
+							if(currentContext !== context){
+								this.cleanup();
+								return;
+							}
+							dojo.toggleClass(node, 'editCursorBlink');
+						}.bind(this), 400, this._cursorSpan, context);
+					}
 				}
 				var parentNode = this._XYParent[idx].domNode;
 				var refChild = this._XYRefChild[idx];
 				var refChildNode = refChild ? refChild.domNode : null;
 				var refAfter = this._XYRefAfter[idx];
-				var cursorL, cursorT, cursorH, offsetParent;
+				var borderBoxPageCoords, cursL, cursT, cursH;
 				if(refChildNode){
 					if(refAfter){
 						if(refChildNode.nextSibling && refChildNode.nextSibling._dvWidget){
 							var nextSibling = refChildNode.nextSibling;
-							offsetParent = nextSibling.offsetParent;
-							//parentNode.insertBefore(this._cursorSpan, nextSibling);
-							var compStyle = dojo.style(nextSibling);
-							cursorL = nextSibling.offsetLeft + parseInt(compStyle.borderLeftWidth) + parseInt(compStyle.paddingLeft);
-							cursorT = nextSibling.offsetTop + parseInt(compStyle.borderTopWidth) + parseInt(compStyle.paddingTop);
+							borderBoxPageCoords = GeomUtils.getBorderBoxPageCoordsCached(nextSibling);
+							cursL = borderBoxPageCoords.l;
+							cursT = borderBoxPageCoords.t;
+							cursH = borderBoxPageCoords.h;
 						}else{
-							offsetParent = refChildNode.offsetParent;
-							//parentNode.appendChild(this._cursorSpan);
-							var compStyle = dojo.style(refChildNode);
-							cursorL = refChildNode.offsetLeft + refChildNode.offsetWidth + parseInt(compStyle.marginRight);
-							cursorT = refChildNode.offsetTop + parseInt(compStyle.borderTopWidth) + parseInt(compStyle.paddingTop);
+							borderBoxPageCoords = GeomUtils.getBorderBoxPageCoordsCached(refChildNode);
+							cursL = borderBoxPageCoords.l + borderBoxPageCoords.w;
+							cursT = borderBoxPageCoords.t;
+							cursH = borderBoxPageCoords.h;
 						}
 					}else{
-						offsetParent = refChildNode.offsetParent;
-						//parentNode.insertBefore(this._cursorSpan, refChildNode);
-						var compStyle = dojo.style(refChildNode);
-						cursorL = refChildNode.offsetLeft + parseInt(compStyle.borderLeftWidth) + parseInt(compStyle.paddingLeft);
-						cursorT = refChildNode.offsetTop + parseInt(compStyle.borderTopWidth) + parseInt(compStyle.paddingTop);
+						borderBoxPageCoords = GeomUtils.getBorderBoxPageCoordsCached(refChildNode);
+						cursL = borderBoxPageCoords.l;
+						cursT = borderBoxPageCoords.t;
+						cursH = borderBoxPageCoords.h;
 					}
-					cursorH = compStyle.height;
 				}else{
-					offsetParent = parentNode.offsetParent;
-					//parentNode.appendChild(this._cursorSpan);
-					var compStyle = dojo.style(parentNode);
-/*
-					if(this._cursorSpan.offsetParent == parentNode){
-						cursorL = parseInt(compStyle.borderLeftWidth) + parseInt(compStyle.paddingLeft);
-						cursorT = parseInt(compStyle.borderTopWidth) + parseInt(compStyle.paddingTop);
-					}else{
-*/
-						cursorL = parentNode.offsetLeft + parseInt(compStyle.borderLeftWidth) + parseInt(compStyle.paddingLeft);
-						cursorT = parentNode.offsetTop + parseInt(compStyle.borderTopWidth) + parseInt(compStyle.paddingTop);
-/*
-					}
-*/
-					cursorH = '16px';
-				}
-				while(offsetParent && offsetParent.tagName != 'BODY'){
-					cursorL += offsetParent.offsetLeft;
-					cursorT += offsetParent.offsetTop;
-					offsetParent = offsetParent.offsetParent;
+					borderBoxPageCoords = GeomUtils.getBorderBoxPageCoordsCached(parentNode);
+					cursL = borderBoxPageCoords.l;
+					cursT = borderBoxPageCoords.t;
+					cursH = 16;
 				}
 				var style = this._cursorSpan.style;
-				style.height = cursorH;
-				style.left = cursorL+'px';
-				style.top = cursorT+'px';
+				style.height = cursH+'px';
+				style.left = cursL+'px';
+				style.top = cursT+'px';
 				var body = parentNode.ownerDocument.body;
 				body.appendChild(this._cursorSpan);
 			}
@@ -320,8 +328,11 @@ return declare("davinci.ve.ChooseParent", null, {
 			this._cursorSpan = null;
 		}
 		if(this._timer){
-			clearInterval(this._timer);
-			this._timer = null;
+			var userWin = this._context.getGlobal();
+			if(userWin){
+				userWin.clearInterval(this._timer);
+				this._timer = null;
+			}
 		}
 		var context = this._context;
 		this.highlightNewWidgetParent(null);
@@ -388,7 +399,7 @@ return declare("davinci.ve.ChooseParent", null, {
 	},
 	
 	/**
-	 * Preparatory work before searching widget tree for possible parent
+	 * Preparatory work before traversing widget tree for possible parent
 	 * widgets at a given (x,y) location
 	 * @param {object} params  object with following properties:
 	 * 		[array{object}] widgets  Array of widgets being dragged (can be empty array)
@@ -404,23 +415,10 @@ return declare("davinci.ve.ChooseParent", null, {
 	 * @return {boolean} true if current (x,y) is different than last (x,y), false if the same.
 	 */
 	findParentsXYBeforeTraversal: function(params) {
-		var widgets = params.widgets;
-		var data = params.data;
-		var eventTarget = params.eventTarget;
 		var position = params.position;
-		var absolute = params.absolute;
-		var currentParent = params.currentParent;
-		var rect = params.rect;
-		var doFindParentsXY = params.doFindParentsXY;
 		this._XYParent = [];
 		this._XYRefChild = [];
 		this._XYRefAfter = [];
-		var bodyWidget = eventTarget.ownerDocument.body._dvWidget;
-		if(absolute && currentParent && currentParent != bodyWidget){
-			this._XYParent.push(currentParent);
-			this._XYRefChild.push(widgets[0]);
-			this._XYRefAfter.push(true);
-		}		
 		if(typeof this.findParentsXYLastPosition == 'undefined'){
 			this.findParentsXYLastPosition = {};
 		}
@@ -453,25 +451,28 @@ return declare("davinci.ve.ChooseParent", null, {
 			position = params.position,
 			doCursor = params.doCursor,
 			beforeAfter = params.beforeAfter;
-		var domNode = wdgt.domNode;
+		
 		var x = position.x;
 		var y = position.y;
-		var w = domNode.offsetWidth;
-		var h = domNode.offsetHeight;
-		var l = domNode.offsetLeft;
-		var t = domNode.offsetTop;
-		var offsetParent = domNode.offsetParent;
-		while(offsetParent && offsetParent.tagName != 'BODY'){
-			l += offsetParent.offsetLeft;
-			t += offsetParent.offsetTop;
-			offsetParent = offsetParent.offsetParent;
+		var helper = wdgt.getHelper();
+		if(helper && helper.getMarginBoxPageCoords){
+			marginBoxPageCoords = helper.getMarginBoxPageCoords(wdgt);
+		} else {
+			var domNode = wdgt.domNode;
+			marginBoxPageCoords = GeomUtils.getMarginBoxPageCoordsCached(domNode);
 		}
+		var l = marginBoxPageCoords.l;
+		var t = marginBoxPageCoords.t;
+		var w = marginBoxPageCoords.w;
+		var h = marginBoxPageCoords.h;
+
 		var r = l + w;
 		var b = t + h;
+		var i, child;
 		if(x >= l && x <= r && y >= t && y <= b){
-			var allowedParents = this.getAllowedTargetWidget(wdgt, data, false);
+			var allowedParents = this.getAllowedTargetWidget(wdgt, data, false, {absolute:absolute});
 			if(allowedParents.length === 1){
-				if(absolute == true){
+				if(absolute === true){
 					// Absolutely positioned widgets get added as last child
 					this._XYParent.push(wdgt);
 					this._XYRefChild.push(null);
@@ -479,32 +480,23 @@ return declare("davinci.ve.ChooseParent", null, {
 				}else{
 					var children = wdgt.getChildren();
 					var childData = [];
-					for(var i=0; i<children.length; i++){
-						var child = children[i];
+					for(i=0; i<children.length; i++){
+						child = children[i];
 						var node = child.domNode;
-						if(xOffset === undefined){
-							var xOffset = 0,
-								yOffset = 0;
-							var offsetParent = node.offsetParent;
-							while(offsetParent && offsetParent.tagName != 'BODY'){
-								xOffset += offsetParent.offsetLeft;
-								yOffset += offsetParent.offsetTop;
-								offsetParent = offsetParent.offsetParent;
-							}
-						}
-						var w = node.offsetWidth;
-						var h = node.offsetHeight;
-						var l = node.offsetLeft + xOffset;
-						var t = node.offsetTop + yOffset;
-						var r = l + w;
-						var b = t + h;
+						var childBorderBoxPageCoords = GeomUtils.getBorderBoxPageCoordsCached(node);
+						w = node.offsetWidth;
+						h = node.offsetHeight;
+						l = childBorderBoxPageCoords.l;
+						t = childBorderBoxPageCoords.t;
+						r = l + w;
+						b = t + h;
 						var c = l + w/2;
 						childData.push({l:l, t:t, r:r, b:b, c:c});
 					}
 					var refChild, refAfter, biggestY;
-					for(var i=0; i<childData.length; i++){
+					for(i=0; i<childData.length; i++){
 						var cd = childData[i];
-						var child = children[i];
+						child = children[i];
 						if(x >= cd.l && x <= cd.r && y >= cd.t && y <= cd.b){
 							// If mouse is over one of the children, then
 							// insert either before or after that child (and jump out of loop)
@@ -544,10 +536,29 @@ return declare("davinci.ve.ChooseParent", null, {
 	},
 	
 	/**
-	 * Wrap-up work after searching widget tree for possible parent
+	 * Wrap-up work after traversing widget tree for possible parent
 	 * widgets at a given (x,y) location
+	 * @param {object} params  see params description for findParentsXYBeforeTraversal
 	 */
-	findParentsXYAfterTraversal: function() {
+	findParentsXYAfterTraversal: function(params) {
+		var widgets = params.widgets;
+		var eventTarget = params.eventTarget;
+		var currentParent = params.currentParent;
+		var absolute = params.absolute;
+		var bodyWidget = eventTarget.ownerDocument.body._dvWidget;
+		if(absolute && currentParent && currentParent != bodyWidget){
+			var found = false;
+			this._XYParent.forEach(function(w){
+				if(w == currentParent){
+					found = true;
+				}
+			});
+			if(!found){
+				this._XYParent.push(currentParent);
+				this._XYRefChild.push(widgets[0]);
+				this._XYRefAfter.push(true);
+			}
+		}		
 		this.findParentsXYLastPosition = {};
 		// For a more intuitive result, force refAfter=true for all candidate parents except the deepest one.
 		// To explain more fully, the refAfter logic in findParentsXY() sets refAFter=true if pointer is on right side
@@ -557,6 +568,14 @@ return declare("davinci.ve.ChooseParent", null, {
 		for(var i=0; i<this._XYRefAfter.length-1; i++){
 			this._XYRefAfter[i] = true;
 		}
+	},
+	
+	/**
+	 * Cleanup work after updating the displayed list of candidate parents
+	 * @param {object} params  see params description for findParentsXYBeforeTraversal
+	 */
+	findParentsXYCleanup: function(params) {
+		this.findParentsXYLastPosition = {};
 	},
 	
     /**
@@ -602,8 +621,7 @@ return declare("davinci.ve.ChooseParent", null, {
         }, [widgetType, absolute, doCursor, beforeAfter, currentParent]));
  		var body = document.body;	// outer document = Maqetta app
 		var parentListDiv = this._parentListDiv = dojo.create('div', {
-			className:'maqParentListDiv', 
-			style:'position:absolute;z-index:1000000; opacity:.7;pointer-events:none;'}, 
+			className:'maqParentListDiv'}, 
 			body);
 		context.setActiveDragDiv(parentListDiv);
 		// Downstream logic stuffs the list of candidate parents into DIV with class 'maqCandidateParents'
@@ -654,7 +672,7 @@ return declare("davinci.ve.ChooseParent", null, {
     
 	onKeyDown: function(event, widgetType, absolute, doCursor, beforeAfter, currentParent){
 		dojo.stopEvent(event);
-		if(event.keyCode==32){	// 32=space key
+		if(event.keyCode==dojo.keys.SPACE){
 			this._spaceKeyDown = true;
 		}else{
 			this._processKeyDown(event.keyCode);
@@ -664,7 +682,7 @@ return declare("davinci.ve.ChooseParent", null, {
 
 	onKeyUp: function(event, widgetType, absolute, doCursor, beforeAfter, currentParent){
 		dojo.stopEvent(event);
-		if(event.keyCode==32){	// 32=space key
+		if(event.keyCode==dojo.keys.SPACE){
 			this._spaceKeyDown = false;
 		}
 		this._keyEventDoUpdate(widgetType, absolute, doCursor, beforeAfter, currentParent);

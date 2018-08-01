@@ -28,9 +28,9 @@ define(["dojo/_base/declare",
 		fileDialogParentFolder: null,
 	
 		okButton : null,
+		uiNLS: uiNLS,
 		
 		postMixInProperties : function() {
-			this.cancel =true;
 			this.inherited(arguments);
 		},
 		postCreate : function(){
@@ -40,6 +40,8 @@ define(["dojo/_base/declare",
 			if(!this._value){
 				this._setRootAttr(this._getRootAttr());
 			}
+
+			this.okButton.onClick = dojo.hitch(this, this._okButton);
 		},
 		
 		
@@ -49,9 +51,9 @@ define(["dojo/_base/declare",
 			this._value = value;
 			var parentFolder = "";
 			if(value && value.elementType=="Folder"){
-				this.fileDialogParentFolder.set(value.getName());
+				this.fileDialogParentFolder.innerHTML = value.getName();
 			}else if(value){
-				this.fileDialogParentFolder.set(value.parent.getPath());
+				this.fileDialogParentFolder.innerHTML = value.parent.getPath();
 			}
 			
 			
@@ -80,7 +82,7 @@ define(["dojo/_base/declare",
 		_setRootAttr : function(value){
 			
 			this._root=value;
-			this.fileDialogParentFolder.set('value', value.getPath());
+			this.fileDialogParentFolder.innerHTML = value.getPath();
 			
 		},
 		_checkValid : function(){
@@ -91,26 +93,29 @@ define(["dojo/_base/declare",
 			this._okButton.set( 'disabled', !valid);
 		},
 		_okButton : function(){
-			this.value = this.fileDialogParentFolder.get('value') + "/" + this.folderName.get( 'value');
-			this.cancel = false;
-			this.onClose();
-			
+			this.value = this.fileDialogParentFolder.innerHTML + "/" + this.folderName.get( 'value');		
+
+			var check = this.checkFileName(this.value);
+			if (check) {
+				return true
+			} else {
+				return false;
+			}
 		},
 		
 		_getValueAttr : function(){
-			this.value = this.fileDialogParentFolder.get('value') + "/" + this.folderName.get( 'value');
+			this.value = this.fileDialogParentFolder.innerHTML + "/" + this.folderName.get( 'value');
 			return this.value;
 		},
 		
 		_cancelButton: function(){
-			this.cancel = true;
 			this.onClose();
 		},
 		
 		_createResource : function(){
-			var resource = Resource.findResource(this.fileDialogParentFolder.get('value') + "/" + this.folderName.get( 'value'));
+			var resource = Resource.findResource(this.fileDialogParentFolder.innerHTML + "/" + this.folderName.get( 'value'));
 			if(resource) return resource;
-			var folder = Resource.findResource(this.fileDialogParentFolder.get('value'));
+			var folder = Resource.findResource(this.fileDialogParentFolder.innerHTML);
 			return folder.createResource(this.folderName.get( 'value'));
 		},
 		onClose : function(){}

@@ -17,20 +17,24 @@ public class FindResource extends Command {
 
     @Override
     public void handleCommand(HttpServletRequest req, HttpServletResponse resp, IUser user) throws IOException {
+    	// SECURITY, VALIDATION
+    	//   'path': XXX not validated
+    	//   'inFolder': XXX not validated
+    	//   'ignoreCase': validated by Boolean.parseBoolean()
+    	//   'workspaceOnly': validated by Boolean.parseBoolean()
+
         String pathStr = req.getParameter("path");
         String inFolder = req.getParameter("inFolder");
-        boolean ignoreCase = "true".equals(req.getParameter("ignoreCase"));
+        boolean ignoreCase = Boolean.parseBoolean(req.getParameter("ignoreCase"));
         boolean workspaceOnly = Boolean.parseBoolean(req.getParameter("workspaceOnly"));
       
         IVResource[] foundFiles = null;
         if (inFolder != null) {
-        	IPath path = new Path(inFolder).append(pathStr);
-            foundFiles = user.findFiles(path.toString(), inFolder, ignoreCase, workspaceOnly);
+            foundFiles = user.findFiles(pathStr, inFolder, ignoreCase, workspaceOnly);
         } else {
             foundFiles = user.findFiles(pathStr, ignoreCase, workspaceOnly);
         }
         this.responseString = Resource.foundVRsourcesToJson(foundFiles, user);
-
+        resp.setContentType("application/json;charset=UTF-8");
     }
-
 }

@@ -4,18 +4,23 @@ define([
 	"dijit/_TemplatedMixin",
 	"dijit/form/CheckBox",
 	"dijit/form/TextBox",
-	"dojo/i18n!davinci/ve/nls/common"
-], function(declare, ContentPane, TemplatedMixin, CheckBox, TextBox, commonNls) {
+	"dijit/form/Select",
+	"dojo/i18n!../nls/common",
+	"dojo/text!./HtmlEditPreferences.html"
+], function(
+	declare,
+	ContentPane,
+	TemplatedMixin,
+	CheckBox,
+	TextBox,
+	Select,
+	commonNls,
+	templateString
+) {
 
-return declare("davinci.ve.prefs.HTMLEditPreferences", [ContentPane, TemplatedMixin], {
+return declare([ContentPane, TemplatedMixin], {
 
-	templateString: "<div><table style='margin: 4px;' cellspacing='4'><tbody>" +
-		//"<tr><td>${_loc.flowLayout}:</td><td><div dojoAttachPoint='flowBoxNode'></div></td></tr>" +
-		"<tr><td>${_loc.snapToNearestWidget}:</td><td><div dojoAttachPoint='snapNode'></div></td></tr>" +
-		"<tr><td>${_loc.showPossibleParents}:</td><td><div dojoAttachPoint='showPossibleParentsNode'></div></td></tr>" +
-		"<tr><td>${_loc.warnOnCSSOverride}:</td><td><div dojoAttachPoint='cssOverrideWarn'></div></td></tr>" +
-		"<tr><td>${_loc.absoluteWidgetsZindex}:</td><td><div dojoAttachPoint='absoluteWidgetsZindex'></div></td></tr>" +
-		"</tbody></table></div>",
+	templateString: templateString,
 
 	postMixInProperties: function(){
 		this._loc = commonNls;
@@ -27,6 +32,15 @@ return declare("davinci.ve.prefs.HTMLEditPreferences", [ContentPane, TemplatedMi
 		this._showPossibleParents = new CheckBox({}, this.showPossibleParentsNode);
 		this._cssOverrideWarn = new CheckBox({}, this.cssOverrideWarn);
 		this._absoluteWidgetsZindex = new TextBox({}, this.absoluteWidgetsZindex);
+/*FIXME: Disabled for now. Ultimately, UI for this option should go to widget palette
+		this._widgetPaletteLayout = new Select({
+			options:[
+				{ label:commonNls.widgetPaletteShow_Icons,  value:'icons' },
+				{ label:commonNls.widgetPaletteShow_List,  value:'list' }
+			]
+		}, this.widgetPaletteLayout);
+*/
+		this._zazl = new CheckBox({}, this.zazl);
 		if(!this.containerNode){
 			this.containerNode = this.domNode;
 		}
@@ -42,23 +56,30 @@ return declare("davinci.ve.prefs.HTMLEditPreferences", [ContentPane, TemplatedMi
 	},
 	
 	getPreferences: function(){
-		var preferences = {
+		return {
 			//flowLayout: this._flowBox.checked,
 			snap: this._snap.checked,
 			showPossibleParents: this._showPossibleParents.checked,
 			cssOverrideWarn: this._cssOverrideWarn.checked,
-			absoluteWidgetsZindex: this._absoluteWidgetsZindex.value
+			absoluteWidgetsZindex: this._absoluteWidgetsZindex.value,
+/*FIXME: Disabled for now. Ultimately, UI for this option should go to widget palette
+			widgetPaletteLayout: this._widgetPaletteLayout.value,
+*/
+			zazl: this._zazl.checked
 		};
-		return preferences;
 	},
 
 	setPreferences: function(preferences){
-		preferences = (preferences || {});
+		preferences = preferences || {};
 		//this._check(this._flowBox, !!preferences.flowLayout);
 		this._check(this._snap, !!preferences.snap);
 		this._check(this._showPossibleParents, !!preferences.showPossibleParents);
 		this._check(this._cssOverrideWarn, !!preferences.cssOverrideWarn);
 		this._absoluteWidgetsZindex.set("value", preferences.absoluteWidgetsZindex);
+/*FIXME: Disabled for now. Ultimately, UI for this option should go to widget palette
+		this._widgetPaletteLayout.set("value", preferences.widgetPaletteLayout);
+*/
+		this._check(this._zazl, !!preferences.zazl);
 	},
 
 	_check: function(widget, checked){
@@ -68,6 +89,5 @@ return declare("davinci.ve.prefs.HTMLEditPreferences", [ContentPane, TemplatedMi
 	save: function(prefs){
 		davinci.ve._preferences = prefs; //FIXME: missing dependency
 	}
-
 });
 });

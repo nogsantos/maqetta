@@ -1,631 +1,692 @@
 define([
-    "require",
-    "dojo/_base/declare",
+	"require",
+	"dojo/_base/declare",
+	"dojo/query",
 	"dijit/_WidgetBase",
 	"dojo/dnd/Mover",
-	"./metadata"
+	"../Runtime",
+	"./metadata",
+	"./States",
+	"./utils/GeomUtils"
 ],
-function(require, declare, _WidgetBase, Mover, Metadata) {
-    
-var LEFT = 0,
-    RIGHT = 1,
-    TOP = 2,
-    BOTTOM = 3,
-    LEFT_TOP = 4,
-    LEFT_BOTTOM = 5,
-    RIGHT_TOP = 6,
-    RIGHT_BOTTOM = 7,
-	DRAG_NOB = 8;	// Overlay nob that follows mouse during drag operation
+function(require, declare, Query, _WidgetBase, Mover, Runtime, Metadata, States, GeomUtils) {
+	
+// Nobs and frame constants
+var LEFT = 0,	// nob and frame
+	RIGHT = 1,
+	TOP = 2,
+	BOTTOM = 3,
+	LEFT_TOP = 4,	// nob only
+	LEFT_BOTTOM = 5,
+	RIGHT_TOP = 6,
+	RIGHT_BOTTOM = 7;
 
-return declare("davinci.ve.Focus", _WidgetBase, {
+return declare(_WidgetBase, {
 
-    size: 6,
-    baseClass: "maqFocus",
+	// Inside knowledge about CSS classes used to style editFocusNob and editFocusFrame DIVs
+	nobSize:11,
+	frameSize:6,
 
-    postCreate: function(){
-        if(this.size < 2){
-            this.size = 2;
-        }
+	postCreate: function(){
+		//FIXME: maybe listen for mouseout on doc, and if so, stop the dragging?
 
-        dojo.style(this.domNode, {position: "absolute", display: "none"}); // FIXME: use CSS class to change display property
-
-        this._frames = [];
-        for(var i = 0; i < 4; i++){
-            var style = {position: "absolute", opacity: 0.5, overflow: "hidden", cursor: "move"}; // move to CSS
-            dojo.mixin(style, i < 2 ? {width: this.size + "px", height: this.size * 2 + "px"} : {height: this.size + "px"});
-            var frame = dojo.create("div", {"class": "editFocusFrame", style: style}, this.domNode);
-            this._frames.push(frame);
-            this.connect(frame, "onmousedown", "onMouseDown");
-            this.connect(frame, "onmouseup", "onMouseUp");
-            this.connect(frame, "ondblclick", "onDblClick");
-        }
-        this._frames[LEFT].style.left =
-            this._frames[LEFT].style.top =
-            this._frames[RIGHT].style.top =
-            this._frames[TOP].style.top = -this.size + "px";
-
-        this._nobs = [];
-        var cursors = ["w-resize", "e-resize", "n-resize", "s-resize",
-            "nw-resize", "sw-resize", "ne-resize", "se-resize"];
-        var border = (dojo.isIE ? 0 : 2);
-        for(var i = 0; i < 9; i++){
-            var nob = dojo.create("div", {"class": "editFocusNob", style: {
-                position: "absolute",
-                width: this.size - border + "px",
-                height: this.size - border + "px",
-                overflow: "hidden",
-                cursor: cursors[i]
-            }}, this.domNode);
-            this._nobs.push(nob);
-            this.connect(nob, "onmousedown", "onMouseDown");
-            this.connect(nob, "onmouseup", "onMouseUp");
-        }
-        this._nobs[DRAG_NOB].style.display = 'none';	// Becomes visible upon mousedown when dragging frame
-        this._nobs[DRAG_NOB].style.background = 'transparent';
-        this._nobs[DRAG_NOB].style.border = 'none';
-        
-        this._nobs[LEFT].style.left =
-            this._nobs[TOP].style.top =
-            this._nobs[LEFT_TOP].style.left =
-            this._nobs[LEFT_TOP].style.top =
-            this._nobs[LEFT_BOTTOM].style.left =
-            this._nobs[RIGHT_TOP].style.top = -this.size + "px";
-        this._nobIndex = -1;
+		dojo.addClass(this.domNode, 'maqFocus');
+		dojo.style(this.domNode, {position: "absolute", display: "none"}); // FIXME: use CSS class to change display property
+		this._stdChrome = dojo.create("div", {"class": "editFocusStdChrome"}, this.domNode);
+		
+		this._frames = [];
+		for(var i = 0; i < 4; i++){
+			var frame = dojo.create("div", {"class": "editFocusFrame"}, this._stdChrome);
+			this._frames.push(frame);
+			this.connect(frame, "onmousedown", "onMouseDown");
+		}
+		dojo.addClass(this._frames[LEFT], "editFocusFrameLEFT");
+		dojo.addClass(this._frames[RIGHT], "editFocusFrameRIGHT");
+		dojo.addClass(this._frames[TOP], "editFocusFrameTOP");
+		dojo.addClass(this._frames[BOTTOM], "editFocusFrameBOTTOM");
+		
+		this._nobs = [];
+		for(var i = 0; i < 8; i++){
+			var nob = dojo.create("div", {"class": "editFocusNob"}, this._stdChrome);
+			this._nobs.push(nob);
+			this.connect(nob, "onmousedown", "onMouseDown");
+		}
+		this._nobIndex = -1;
+		this._frameIndex = -1;
 		
 		this._custom = dojo.create("div", {"class": "editFocusCustom"}, this.domNode);
+	},
 
-        // _box holds resize values during dragging assuming no shift-key constraints
-        // _constrained holds resize values after taking into account shift-key constraints
-        this._box = {l: 0, t: 0, w: 0, h: 0};
-        this._constrained = dojo.mixin({}, this._box);
-        
-        this._resizable = {width: true, height: true};
-    },
-    
-    move: function(box, event){
-        if(!box){
-            return;
-        }
-        var context = this._context;
-        var cp = context._chooseParent;
-		if(event){
-			if(event.target != this._lastEventTarget){
-				// If mouse has moved over a different widget, then null out the current
-				// proposed parent widget, which will force recalculation of the list of possible parents
-				cp.setProposedParentWidget(null);
-			}
-			this._lastEventTarget = event.target;
-		}else{
-			// Sometimes this routine gets called without an event object
-			this._lastEventTarget = null;
-		}
-
-        var b = this._box;
-        b.l = box.l;
-        b.t = box.t;
-
-        var position_prop;
-        if(this._selectedWidget){
-            // Short-term hack just before M5 to prevent reference through null
-            // error in case current widget's domNode doesn't have a computed style
-            var position_prop = this.dojoStyle(this._selectedWidget.domNode,"position");
-        }
-        var absolute = (position_prop=="absolute");
-        var doSnapLinesX = absolute;
-        var doSnapLinesY = absolute;
-
-        // Constrained movement in x or y if shift key is down
-        var domNode = this._selectedWidget ? this._selectedWidget.domNode : null;
-        if(absolute && domNode && event && event.shiftKey){
-            // Need to subtract off margins
-            var marginLeft = Number(dojo.style(domNode, 'marginLeft'));
-            var marginTop = Number(dojo.style(domNode, 'marginTop'));
-            var widgetLeft = domNode.offsetLeft - marginLeft;
-            var widgetTop = domNode.offsetTop - marginTop;
-            var node = domNode.offsetParent;
-            while(node && node.tagName != 'BODY'){
-            	widgetLeft += node.offsetLeft;
-            	widgetTop += node.offsetTop;
-            	node = node.offsetParent;
-            }
-            var deltaX = Math.abs(b.l - widgetLeft);
-            var deltaY = Math.abs(b.t - widgetTop);
-            var CONSTRAIN_MIN_DIST = 3;	// constrained dragging only active if user moves object non-trivial amount
-            if(deltaX >= deltaY && deltaX > CONSTRAIN_MIN_DIST){
-            	b.t = widgetTop;
-            	doSnapLinesY = false;
-            }else if(deltaY >= deltaX && deltaY > CONSTRAIN_MIN_DIST){
-            	b.l = widgetLeft;
-            	doSnapLinesX = false;
-            }
-        }
-
-        // Short-term hack just before M5 to prevent reference through null
-        // error in case current widget's domNode doesn't have a computed style
-        this.dojoStyle(this.domNode, {left: b.l + "px", top: b.t + "px"});
-
-        var currentParent = null;
-        if(this._selectedWidget){
-        	currentParent = this._selectedWidget.getParent();
-        }
-        if(this._selectedWidget && event){
-        	var widgetType = this._selectedWidget.type;
-        	var dropCursor = Metadata.queryDescriptor(widgetType, "dropCursor");
-    		var doCursor = !absolute;
-    		if (typeof this._dropCursor == 'object' && this._dropCursor.show === false){
-    			doCursor = false;
-    		}
-    		var beforeAfter = this._dropCursor && this._dropCursor.beforeAfter;
-    		var parentListDiv = cp.parentListDivGet();
-    		if(!parentListDiv){// Make sure there is a DIV into which list of parents should be displayed
-    			parentListDiv = cp.parentListDivCreate({
-    				widgetType:widgetType, 
-    				absolute:absolute, 
-    				doCursor:doCursor, 
-    				beforeAfter:beforeAfter, 
-    				currentParent:currentParent });
-     		}
-    		var parentIframe = context.getParentIframe();
-    		if(parentIframe){
-    			// Ascend iframe's ancestors to calculate page-relative x,y for iframe
-    			var offsetLeft = 0;
-    			var offsetTop = 0;
-    			var offsetNode = parentIframe;
-    			while(offsetNode && offsetNode.tagName != 'BODY'){
-                    offsetLeft += offsetNode.offsetLeft;
-                    offsetTop += offsetNode.offsetTop;
-                    offsetNode = offsetNode.offsetParent;
-        		}
-    			parentListDiv.style.left = (offsetLeft + event.pageX) + 'px';
-    			parentListDiv.style.top = (offsetTop + event.pageY) + 'px';
-            }
-        }
-        var showParentsPref = this._context.getPreference('showPossibleParents');
-        var spaceKeyDown = cp.isSpaceKeyDown();
-        var showCandidateParents = (!showParentsPref && spaceKeyDown) || (showParentsPref && !spaceKeyDown);
-        if(this._mover && event && this._selectedWidget){
-            var data = {type:this._selectedWidget.type};
-            var position = { x:event.pageX, y:event.pageY};
-            var snapBox = {l:b.l, t:b.t, w:0, h:0};
-            if(this._box && this._box.w && this._box.h){
-                snapBox.w = this._box.w;
-                snapBox.h = this._box.h;
-            }
-            // Call the dispatcher routine that updates snap lines and
-            // list of possible parents at current (x,y) location
-            this._context.dragMoveUpdate({
-            		widgets:[this._selectedWidget],
-            		data:data,
-            		eventTarget:event.target,
-            		position:position,
-            		absolute:absolute,
-            		currentParent:currentParent,
-             		rect:snapBox, 
-            		doSnapLinesX:doSnapLinesX, 
-            		doSnapLinesY:doSnapLinesY, 
-            		doFindParentsXY:showCandidateParents,
-            		doCursor:!absolute});
-        }else{
-        	// If not showing snap lines or parents, then make sure they aren't showing
-			context.dragMoveCleanup();
-        }
-        if(this._contexDiv){
-            var x = b.w + 10;
-            this._contexDiv.style.left = x + 'px';
-            this._updateSubwidgetList();
-        }
-    },
-
-    resize: function(box, widget){
+	resize: function(box, widget){
 		if(widget){
 		    this._selectedWidget = widget;
 		}
-    	this._resize(box);
-    	this._box = box;
-    },
+		this._moverCurrent = dojo.mixin({}, box);
+		this._moverCurrentConstrained = dojo.mixin({}, this._moverCurrent);
+		this._updateFocusChrome(this._moverCurrent, true /*offScreenAdjust*/);
+		if(this._contexDiv){	// Theme editor only
+			var x = box.w + 10;
+			this._contexDiv.style.left = x + 'px';
+			this._updateSubwidgetList();
+		}
+		this._box = box;	// Only used by theme editor's subwidget logic
+	},
+	
+	getBounds: function(){
+		return this._moverCurrent;
+	},
 
-    _resize: function(box){
-        if(!box){
-            return;
-        }
-
-        var b = dojo.mixin({}, box);
-		
-		// bboxActual is box before adjustments
-		this._bboxActual = {l:b.l, t:b.t};
-
-        // Adjust for size of border when near the top left corner of the screen
-        if(b.l < this.size){
-            b.w -= this.size - b.l;
-            b.l = this.size;
-        }
-        if(b.t < this.size){
-            b.h -= this.size - b.t;
-            b.t = this.size;
-        }
-
-        if("l" in box && "t" in box){
-            this.move({l: b.l, t: b.t});
-        }
-
-        // Width/height must not be less than 0 
-        if(b.w < 0){
-            b.w = 0;
-        }
-        if(b.h < 0){
-            b.h = 0;
-        }
-		this._bboxActual.w = b.w;
-		this._bboxActual.h = b.h;
-
-        // Adjust for size of border when near the bottom/right corner of the screen
-        var box_r = b.l + b.w + this.size;
-        var box_b = b.t + b.h + this.size;
-        var widget = this._selectedWidget;
-        var htmlElem = widget ? widget.domNode.ownerDocument.body.parentNode : null;
-        if(htmlElem){
-        	if(box_r > htmlElem.scrollWidth){
-        		b.w -= (box_r - htmlElem.scrollWidth);
-        	}
-        	if(box_b > htmlElem.scrollHeight){
-        		b.h -= (box_b - htmlElem.scrollHeight);
-        	}
-        }
-        
-        var h = b.h + this.size * 2;
-        this._frames[LEFT].style.height = h + "px";
-        this._frames[RIGHT].style.height = h + "px";
-        this._frames[RIGHT].style.left = b.w + "px";
-        this._frames[TOP].style.width = b.w + "px";
-        this._frames[BOTTOM].style.top = b.h + "px";
-        this._frames[BOTTOM].style.width = b.w + "px";
-
-        var l = Math.round(b.w / 2 - this.size / 2);
-        var t = Math.round(b.h / 2 - this.size / 2);
-        this._nobs[LEFT].style.top = t + "px";
-        this._nobs[RIGHT].style.left = b.w + "px";
-        this._nobs[RIGHT].style.top = t + "px";
-        this._nobs[TOP].style.left = l + "px";
-        this._nobs[BOTTOM].style.left = l + "px";
-        this._nobs[BOTTOM].style.top = b.h + "px";
-        this._nobs[LEFT_BOTTOM].style.top = b.h + "px";
-        this._nobs[RIGHT_TOP].style.left = b.w + "px";
-        this._nobs[RIGHT_BOTTOM].style.left = b.w + "px";
-        this._nobs[RIGHT_BOTTOM].style.top = b.h + "px";
-		
-		this._bboxAdjusted = b;
-    },
-    
-    
-    show: function(widget, inline){
-        //debugger;
-        if (!widget){
-            // sometimes you get no widget when  DnD in split screen
-            return; 
-        }
+	show: function(widget, params){
+		var inline = params && params.inline;
+		if (!widget){
+			// sometimes you get no widget when  DnD in split screen
+			return; 
+		}
 		this._custom.innerHTML = '';
-        this.domNode.style.display = "block";
-        this._selectedWidget = widget;
+		var showStandardSelectionChrome = Metadata.queryDescriptor(widget.type, "showStandardSelectionChrome");
+		this._stdChrome.style.display = (showStandardSelectionChrome === false) ? 'none' : 'block';
+		this.domNode.style.display = "block";
+		this._selectedWidget = widget;
 		var helper = widget.getHelper();
 		var delete_inline = true;
 		if(helper && helper.onShowSelection){
-			helper.onShowSelection({widget:widget, customDiv:this._custom,
-				bboxActual:this._bboxActual, bboxAdjusted:this._bboxAdjusted});
+			helper.onShowSelection({widget:widget, customDiv:this._custom});
 		}
-        if (inline) {
-            this.showInline(widget); // sometimes the widget changes from undo/redo som get the current widget
+		if (inline) {
+			this.showInline(widget); // sometimes the widget changes from undo/redo som get the current widget
 			delete_inline = false;
 		}
 		if(delete_inline){
-            delete this._inline; // delete any old inline kicking around
-        }
+			delete this._inline; // delete any old inline kicking around
+		}
     },
 
-    showInline: function(widget) {
-        this._selectedWidget = widget;
-        var context = this._context;
-        var self = this;
-        Metadata.getSmartInput(widget.type).then(function(inline) {
-        	if (!inline) {
-        		return;
-        	}
-            self._inline = inline;
-            if (inline.useParent) {
-                var parentWidget = widget.getParent();
-                if (parentWidget) {
-                    context.deselect(widget);
-                    context.select(parentWidget);
-                    var parentFocusObject = context.getFocus(parentWidget);
-                    parentFocusObject.showInline(parentWidget);
-                }
-            } else if (inline.show) {
-                inline.show(widget.id);
-            }
-        });
-    },
-
+	showInline: function(widget) {
+		this._selectedWidget = widget;
+		var context = this._context;
+		var self = this;
+		Metadata.getSmartInput(widget.type).then(function(inline) {
+			if(!inline){
+				return;
+			}
+			self._inline = inline;
+			
+			/* THE COMMENTED OUT CODE BELOW ACTUALLY WORKS BUT NO WIDGETS ARE USING IT TODAY
+			 * SO COMMENTING OUT OF PRODUCT.
+			// Check ancestors for 'inlineEditDescendantIntercept' property.
+			// If ancestor has such a property and if the current node matches
+			// one of the selectors specific in that property's array
+			var p = widget.getParent();
+			var ancestor;
+			while_loop:
+			while(p && p.domNode && p.domNode.tagName != 'BODY'){
+				var inlineEditDescendantIntercept = Metadata.queryDescriptor(p.type, 'inlineEditDescendantIntercept');
+				if(inlineEditDescendantIntercept && inlineEditDescendantIntercept.length){
+					for(var i=0; i<inlineEditDescendantIntercept.length; i++){
+						var selector = inlineEditDescendantIntercept[i];
+						var nodelist = Query(selector, p.domNode);
+						for(var j=0; j<nodelist.length; j++){
+							if(nodelist[j] == widget.domNode){
+								ancestor = p;
+								break while_loop;
+							}
+						}
+					}
+				}
+				p = p.getParent();
+			}
+			if(ancestor){
+				context.deselect(widget);
+				context.select(ancestor);
+				var parentFocusObject = context.getFocus(ancestor);
+				parentFocusObject.showInline(ancestor);
+			}else 
+			*/
+			if (inline.useParent) {
+				var parentWidget = widget.getParent();
+				if (parentWidget) {
+					context.deselect(widget);
+					context.select(parentWidget);
+					var parentFocusObject = context.getFocus(parentWidget);
+					parentFocusObject.showInline(parentWidget);
+				}
+			} else if (inline.show) {
+				inline.show(widget.id);
+			}
+		});
+	},
 
 	inlineEditActive: function(){
 		if(this._inline && this._inline.inlineEditActive){
 			return this._inline.inlineEditActive();
-		}else{
-			return false;
 		}
-		
+
+		return false;
 	},
 
-    hide: function(inline){
+	hide: function(inline){
 
 		var widget = this._selectedWidget;
 		var helper = widget ? widget.getHelper() : undefined;
 		if(helper && helper.onHideSelection){
-			// Don't know if any widgets actually use this helper
-			// Included for completeness
 			helper.onHideSelection({widget:widget, customDiv:this._custom});
 		}
-        this.domNode.style.display = "none";
+		this.domNode.style.display = "none";
 		this._selectedWidget = null;	// Used by page editor
 		this._displayedWidget = null;	// Used by theme editor
-        if (this._inline){
-            this._inline.hide();
-            delete this._inline;
-        }
-    },
-    
-    allow: function(op){
-        if(!op){
-            return;
-        }
-        this._op = op;
+		if (this._inline){
+			this._inline.hide();
+			delete this._inline;
+		}
+	},
 
-        var cursor = (op.move ? "move" : "auto");
-        dojo.forEach(this._frames, function(f){
-            f.style.cursor = cursor;
-        });
+	allow: function(op){
+		if(!op){
+			return;
+		}
+		this._op = op;
+		
+		var display = {};
+		var helper = this._selectedWidget.getHelper();
+		if(helper && helper.resizeAllowWhich){
+			helper.resizeAllowWhich(this._selectedWidget, display);
+			this._resizeLeft = display.resizeLeft;
+			this._resizeRight = display.resizeRight;
+			this._resizeTop = display.resizeTop;
+			this._resizeBottom = display.resizeBottom;
+		}else{
+			this._resizeLeft = this._resizeRight = op.resizeWidth;
+			this._resizeTop = this._resizeBottom = op.resizeHeight;
+		}
+		display.left = (this._resizeLeft && !this._resizeTop && !this._resizeBottom) ? "block" : "none";
+		display.right = (this._resizeRight && !this._resizeTop && !this._resizeBottom) ? "block" : "none";
+		display.top = (this._resizeTop && !this._resizeLeft && !this._resizeRight) ? "block" : "none";
+		display.bottom = (this._resizeBottom && !this._resizeLeft && !this._resizeRight) ? "block" : "none";
+		display.left_top = (this._resizeLeft && this._resizeTop) ? "block" : "none";
+		display.left_bottom = (this._resizeLeft && this._resizeBottom) ? "block" : "none";
+		display.right_top = (this._resizeRight && this._resizeTop) ? "block" : "none";
+		display.right_bottom = (this._resizeRight && this._resizeBottom) ? "block" : "none";
+		this._nobs[LEFT].style.display = display.left;
+		this._nobs[RIGHT].style.display = display.right;
+		this._nobs[TOP].style.display = display.top;
+		this._nobs[BOTTOM].style.display = display.bottom;
+		this._nobs[LEFT_TOP].style.display = display.left_top;
+		this._nobs[LEFT_BOTTOM].style.display = display.left_bottom;
+		this._nobs[RIGHT_TOP].style.display = display.right_top;
+		this._nobs[RIGHT_BOTTOM].style.display = display.right_bottom;
+		this._nobs[LEFT].style.cursor = this._frames[LEFT].style.cursor = this._resizeLeft ? "w-resize" : "auto";
+		this._nobs[RIGHT].style.cursor = this._frames[RIGHT].style.cursor = this._resizeRight ? "e-resize" : "auto";
+		this._nobs[TOP].style.cursor = this._frames[TOP].style.cursor = this._resizeTop ? "n-resize" : "auto";
+		this._nobs[BOTTOM].style.cursor = this._frames[BOTTOM].style.cursor = this._resizeBottom ? "s-resize" : "auto";
+		this._nobs[LEFT_TOP].style.cursor = display.left_top != "none" ? "nw-resize" : "auto";
+		this._nobs[LEFT_BOTTOM].style.cursor = display.left_bottom != "none" ? "sw-resize" : "auto";
+		this._nobs[RIGHT_TOP].style.cursor = display.right_top != "none" ? "ne-resize" : "auto";
+		this._nobs[RIGHT_BOTTOM].style.cursor = display.right_bottom != "none" ? "se-resize" : "auto";
+	},
 
-        var horizontal = (op.resizeWidth ? "block" : "none");
-        var vertical = (op.resizeHeight ? "block" : "none");
-        var corner = (op.resizeWidth && op.resizeHeight ? "block" : "none");
-        this._nobs[LEFT].style.display = horizontal;
-        this._nobs[RIGHT].style.display = horizontal;
-        this._nobs[TOP].style.display = vertical;
-        this._nobs[BOTTOM].style.display = vertical;
-        this._nobs[LEFT_TOP].style.display = corner;
-        this._nobs[LEFT_BOTTOM].style.display = corner;
-        this._nobs[RIGHT_TOP].style.display = corner;
-        this._nobs[RIGHT_BOTTOM].style.display = corner;
-    },
-	
-    onMouseDown: function(event){
+	/**
+	 * Update the position of the various DIVs that make up the selection chrome
+	 * @param {object} rect - location/size for currently selected widget in form of {l:,t:,w:,h:}
+	 * @param {boolean} offScreenAdjust - whether to pull selection in from off edge of canvas
+	 */
+	_updateFocusChrome: function(rect, offScreenAdjust){
+		// Various constants leveraging knowledge about selection chrome CSS style rules
+		var nobOffScreenAdjust = this.nobSize + 1;
+		var frameOffScreenAdjusted = this.frameSize + 1;
+		var normalFrameLeft = -6;
+		var normalFrameTop = -6;
+		var normalNobLeft = -11;
+		var normalNobTop = -11;
+		var frameSizeWidthAdjust = 4;
+		var frameSizeBorderAdjust = 4;
+
+		var focusContainer = dojo.byId('focusContainer');
+		if(!focusContainer){
+			// Occasionally, timing is such that first time this routine is called,
+			// focusContainer doesn't exist yet. No problem, this routine will get
+			// called later again after the focusContainer has been created.
+			return;
+		}
+		var focusContainerBounds = GeomUtils.getBorderBoxPageCoords(focusContainer);
+		var context = this._context;
+		var parentIframe = context.getParentIframe();
+		var parentbounds = GeomUtils.getBorderBoxPageCoords(parentIframe);
+		rect.l += parentbounds.l;
+		rect.t += parentbounds.t;
+		var bodyElement = parentIframe.contentDocument.body;
+		rect.l -= GeomUtils.getScrollLeft(bodyElement);
+		rect.t -= GeomUtils.getScrollTop(bodyElement);
+		// FIXME: Disable the offscreen adjust in all cases - should just delete that code
+		offScreenAdjust = false;
+
+		this.domNode.style.left = (rect.l - focusContainerBounds.l) + 'px';
+		this.domNode.style.top = (rect.t - focusContainerBounds.t) + 'px';
+		
+		var nobLeftsideAdjustedLeft = normalNobLeft;
+		var nobTopsideAdjustedTop = normalNobTop;
+		var nobRightsideAdjustedLeft = rect.w;
+		var nobBottomsideAdjustedTop = rect.h;
+		var nobWidthAdjusted = rect.w;
+		var nobHeightAdjusted = rect.h;
+		var frameLeftsideLeftAdjusted = normalFrameLeft;
+		var frameTopsideTopAdjusted = normalFrameTop;
+		var frameRightsideAdjustedLeft = rect.w;
+		var frameBottomsideAdjustedTop = rect.h;
+		var frameWidthAdjusted = rect.w + frameSizeWidthAdjust + frameSizeBorderAdjust;
+		var frameHeightAdjusted = rect.h + frameSizeWidthAdjust + frameSizeBorderAdjust;
+		
+		var doc = this.domNode && this.domNode.ownerDocument;
+		var body = doc && doc.body;
+		if(offScreenAdjust && body){
+			// Determine if parts of selection are off screen
+			// If so, shift selection DIVs to make it visible
+			var farthestLeft, farthestTop, farthestRight, farthestBottom;
+			var canvasLeft = GeomUtils.getScrollLeft(body);
+			var canvasTop = GeomUtils.getScrollTop(body);;
+			var canvasRight = canvasLeft + body.clientWidth;
+			var canvasBottom = canvasTop + body.clientHeight;
+			
+			farthestLeft = rect.l - nobOffScreenAdjust;
+			farthestTop = rect.t - nobOffScreenAdjust;
+			var nobOffScreenAdjustLeft = farthestLeft < canvasLeft ? canvasLeft - farthestLeft : 0;
+			var nobOffScreenAdjustTop = farthestTop < canvasTop ? canvasTop - farthestTop : 0;
+			nobLeftsideAdjustedLeft += nobOffScreenAdjustLeft;
+			nobTopsideAdjustedTop += nobOffScreenAdjustTop;
+			
+			farthestRight = rect.l + rect.w + nobOffScreenAdjust;
+			farthestBottom = rect.t + rect.h + nobOffScreenAdjust;
+			var nobRightAdjust = farthestRight > canvasRight ? canvasRight - farthestRight : 0;
+			var nobBottomAdjust = farthestBottom > canvasBottom ? canvasBottom - farthestBottom : 0;
+			nobRightsideAdjustedLeft += nobRightAdjust;	
+			nobBottomsideAdjustedTop += nobBottomAdjust;
+
+			farthestLeft = rect.l - frameOffScreenAdjusted;
+			farthestTop = rect.t - frameOffScreenAdjusted;
+			var frameOffScreenAdjustedLeft = farthestLeft < canvasLeft ? canvasLeft - farthestLeft : 0;
+			var frameOffScreenAdjustedTop = farthestTop < canvasTop ? canvasTop - farthestTop : 0;
+			frameLeftsideLeftAdjusted += frameOffScreenAdjustedLeft;
+			frameTopsideTopAdjusted += frameOffScreenAdjustedTop;
+			frameWidthAdjusted -= frameOffScreenAdjustedLeft;
+			frameHeightAdjusted -= frameOffScreenAdjustedTop;
+			
+			farthestRight = rect.l + rect.w + frameOffScreenAdjusted;
+			farthestBottom = rect.t + rect.h + frameOffScreenAdjusted;
+			var frameRightAdjust = farthestRight > canvasRight ? canvasRight - farthestRight : 0;
+			var frameBottomAdjust = farthestBottom > canvasBottom ? canvasBottom - farthestBottom : 0;
+			frameRightsideAdjustedLeft += frameRightAdjust;	
+			frameBottomsideAdjustedTop += frameBottomAdjust;
+			farthestRight = frameOffScreenAdjustedLeft + frameWidthAdjusted;
+			farthestBottom = frameOffScreenAdjustedTop + frameHeightAdjusted;
+			var frameWAdjust = (farthestRight + frameSizeBorderAdjust) > canvasRight ? canvasRight - (farthestRight + frameSizeBorderAdjust) : 0;
+			var frameHAdjust = (farthestBottom + frameSizeBorderAdjust) > canvasBottom ? canvasBottom - (farthestBottom + frameSizeBorderAdjust) : 0;
+			frameWidthAdjusted += frameWAdjust;
+			frameHeightAdjusted += frameHAdjust;
+		}
+		
+		this._frames[LEFT].style.left =
+			this._frames[TOP].style.left =
+			this._frames[BOTTOM].style.left = frameLeftsideLeftAdjusted + "px";
+		this._frames[LEFT].style.top =
+			this._frames[TOP].style.top =
+			this._frames[RIGHT].style.top = frameTopsideTopAdjusted + "px";
+		this._frames[LEFT].style.height = frameHeightAdjusted + "px";
+		this._frames[RIGHT].style.height = frameHeightAdjusted + "px";
+		this._frames[RIGHT].style.left = frameRightsideAdjustedLeft + "px";
+		this._frames[TOP].style.width = frameWidthAdjusted + "px";
+		this._frames[BOTTOM].style.top = frameBottomsideAdjustedTop + "px";
+		this._frames[BOTTOM].style.width = frameWidthAdjusted + "px";
+
+		var l = Math.round(nobWidthAdjusted / 2 - this.nobSize / 2);
+		var t = Math.round(nobHeightAdjusted / 2 - this.nobSize / 2);
+		this._nobs[LEFT].style.left =
+			this._nobs[LEFT_TOP].style.left =
+			this._nobs[LEFT_BOTTOM].style.left = nobLeftsideAdjustedLeft + "px";
+		this._nobs[TOP].style.top =
+			this._nobs[LEFT_TOP].style.top =
+			this._nobs[RIGHT_TOP].style.top = nobTopsideAdjustedTop + "px";
+		this._nobs[LEFT].style.top = t + "px";
+		this._nobs[RIGHT].style.left = nobRightsideAdjustedLeft + "px";
+		this._nobs[RIGHT].style.top = t + "px";
+		this._nobs[TOP].style.left = l + "px";
+		this._nobs[BOTTOM].style.left = l + "px";
+		this._nobs[BOTTOM].style.top = nobBottomsideAdjustedTop + "px";
+		this._nobs[LEFT_BOTTOM].style.top = nobBottomsideAdjustedTop + "px";
+		this._nobs[RIGHT_TOP].style.left = nobRightsideAdjustedLeft + "px";
+		this._nobs[RIGHT_BOTTOM].style.left = nobRightsideAdjustedLeft + "px";
+		this._nobs[RIGHT_BOTTOM].style.top = nobBottomsideAdjustedTop + "px";
+		
+		// Hack to get around Chrome bug/quirk that is triggered by certain widgets.
+		// See issue https://github.com/maqetta/maqetta/issues/2967
+		// For some reason, even though the left/top coordinates of the focus box
+		// are correctly updated, Chrome doesn't actually redraw the focus box until
+		// some other "redraw trigger" happens within its code.
+		// To force such an redraw trigger, fiddle with opacity property.
+		this.domNode.style.opacity = .95;
+		setTimeout(function(){
+			this.domNode.style.opacity = 1;
+		}.bind(this), 1);
+	},
+
+	onMouseDown: function(event){
 		this._removeKeyHandlers();
 
-        // not to start Mover on the context menu
-        if(event.button === 2 || event.ctrlKey){
-            return;
-        }
-        // Only process mousedown events when SelectTool is active
-        // Mostly to allow CreateTool to drag out widget initial size even
-        // when mouse is over focus nodes
-        if(this._context._activeTool.declaredClass != 'davinci.ve.tools.SelectTool'){
-        	return;
-        }
-        this._shiftKey = false;
+		if(!this._selectedWidget || !this._selectedWidget.domNode){
+			return;
+		}
+		// not to start Mover on the context menu
+		if(event.button === 2 || event.ctrlKey){
+			return;
+		}
+		// Only process mousedown events when SelectTool is active
+		// Mostly to allow CreateTool to drag out widget initial size even
+		// when mouse is over focus nodes
+		if(this._context._activeTool.declaredClass != 'davinci.ve.tools.SelectTool'){
+			return;
+		}
+		this._shiftKey = event.shiftKey;
+		this._sKey = false;
 
-        if(dojo.indexOf(this._frames, event.target) >= 0){
-            this._nobIndex = -1;
-            if(this._op && this._op.move){
-                new Mover(this.domNode, event, this);
-            }
-            dojo.stopEvent(event);
-            
-        }else{
-            this._nobIndex = dojo.indexOf(this._nobs, event.target);
-            if(this._nobIndex >= 0){
-                new Mover(event.target, event, this);
-                switch(this._nobIndex){
-                case LEFT:
-                case LEFT_BOTTOM:
-                    this._nobBox = {l: -this.size};
-                    break;
-                case TOP:
-                case RIGHT_TOP:
-                    this._nobBox = {t: -this.size};
-                    break;
-                case LEFT_TOP:
-                    this._nobBox = {l: -this.size, t: -this.size};
-                    break;
-                }
-                dojo.stopEvent(event);
-                
-                var userdoc = this._context.getDocument();	// inner document = user's document
-                userdoc.defaultView.focus();	// Make sure the userdoc is the focus object for keyboard events
-                this._keyDownHandler = dojo.connect(userdoc, "onkeydown", dojo.hitch(this, function(e){
-                	this.onKeyDown(e);
-                }));
-                this._keyUpHandler = dojo.connect(userdoc, "onkeyup", dojo.hitch(this, function(e){
-                	this.onKeyUp(e);
-                }));
-            }
-         }
-     },
+		this._nobIndex = dojo.indexOf(this._nobs, event.target);
+		this._frameIndex = dojo.indexOf(this._frames, event.target);
+		var moverDragDivSize = 800;
+		var moverDragDivHalf = 400;
+		var l = event.pageX - moverDragDivHalf;
+		var t = event.pageY - moverDragDivHalf;
+		var marginBoxPageCoords = null;
+		var helper = this._selectedWidget.getHelper();
+		if(helper && helper.getMarginBoxPageCoords){
+			marginBoxPageCoords = helper.getMarginBoxPageCoords(this._selectedWidget);
+		} else {
+			var node = this._selectedWidget.domNode;
+			marginBoxPageCoords = GeomUtils.getMarginBoxPageCoords(node);
+		}
+		var parentIframeOffset = GeomUtils.getBorderBoxPageCoords(this._context.getParentIframe());
+		this._moverStart = { moverLeft:l, moverTop:t,
+				l:marginBoxPageCoords.l+parentIframeOffset.l, t:marginBoxPageCoords.t+parentIframeOffset.t,
+				w:marginBoxPageCoords.w, h:marginBoxPageCoords.h };
 
-    onMouseUp: function(event){
-        var context = this._context;
+		var bodyNode = document.body;
+		this._moverCurrent = dojo.mixin({}, this._moverStart);
+		this._moverDragDiv = dojo.create('div', 
+				{className:'focusDragDiv',
+				style:'position:absolute;left:'+l+'px;top:'+t+'px;width:'+moverDragDivSize+'px;height:'+moverDragDivSize+'px'},
+				bodyNode);
+		this._mover = new Mover(this._moverDragDiv, event, this);
+		dojo.stopEvent(event);
+
+		this._mouseDownInfo = { widget:this._selectedWidget, pageX:event.pageX+parentIframeOffset.l, pageY:event.pageY+parentIframeOffset.t, dateValue: Date.now() };
+		
+		// Temporarily stash the mousedown event so that the upcoming
+		// onMoveStop handler can process that event.
+		this._moverMouseDownEvent = event;
+		
+		this._moverMouseUpEvent = null;
+		this._moverMouseUpHandler = dojo.connect(this._moverDragDiv, "onmouseup", dojo.hitch(this, function(e){
+			this.onMouseUp(e);
+		}));
+		var userdoc = this._context.getDocument();	// inner document = user's document
+
+		// Chrome doesn't blur active focus node when switching frames, so focus on something else focusable first to cause the blur
+		document.getElementById("maqetta_project_select").focus();
+		userdoc.defaultView.focus();	// Make sure the userdoc is the focus object for keyboard events
+
+		this._keyDownHandler = dojo.connect(userdoc, "onkeydown", dojo.hitch(this, function(e){
+			this.onKeyDown(e);
+		}));
+		this._keyUpHandler = dojo.connect(userdoc, "onkeyup", dojo.hitch(this, function(e){
+			this.onKeyUp(e);
+		}));
+	},
+
+	/**
+	 * Callback routine from dojo.dnd.Mover with every mouse move.
+	 * What that means here is dragging on selection nob or selection frame.
+	 * @param {object} mover - return object from dojo.dnd.Mover constructor
+	 * @param {object} box - {l:,t:} top/left corner of where drag DIV should go
+	 * @param {object} event - the mousemove event
+	 */
+	onMove: function(mover, box, event){
+		// If there was any dragging, prevent a mousedown/mouseup combination
+		// from triggering a select operation
+		this._mouseDownInfo = null;
+
+		// Update the transparent overlay DIV that tracks mouse and
+		// intercepts mouse events from activating widgets under mouse
+		if(this._moverDragDiv){
+			this._moverDragDiv.style.left = box.l + 'px';
+			this._moverDragDiv.style.top = box.t + 'px';
+		}
+		
+		// Don't do move operation if dragging on an edge where that dimension of the widget
+		// is not resizable
+		if((this._frameIndex === LEFT && !this._resizeLeft) || (this._frameIndex === RIGHT && !this._resizeRight) ||
+				(this._frameIndex === TOP && !this._resizeTop) || (this._frameIndex === BOTTOM && !this._resizeBottom)){
+			return;
+		}
+		
+		// Recompute focus chrome's bounds for normal/unconstrained resizing (via dragging nob or frame)
+		var start = this._moverStart;
+		var dx = box.l - start.moverLeft;
+		var dy = box.t - start.moverTop;
+		if(this._frameIndex === LEFT || this._nobIndex === LEFT_TOP || this._nobIndex === LEFT || this._nobIndex === LEFT_BOTTOM){
+			this._moverCurrent.l = start.l + dx;
+			this._moverCurrent.w = start.w - dx;
+		}else if(this._frameIndex === RIGHT || this._nobIndex === RIGHT_TOP || this._nobIndex === RIGHT || this._nobIndex === RIGHT_BOTTOM){
+			this._moverCurrent.w = start.w + dx;
+		}
+		if(this._frameIndex === TOP || this._nobIndex === LEFT_TOP || this._nobIndex === TOP || this._nobIndex === RIGHT_TOP){
+			this._moverCurrent.t = start.t + dy;
+			this._moverCurrent.h = start.h - dy;
+		}else if(this._frameIndex === BOTTOM || this._nobIndex === LEFT_BOTTOM || this._nobIndex === BOTTOM || this._nobIndex === RIGHT_BOTTOM){
+			this._moverCurrent.h = start.h + dy;
+		}
+		
+		// Compute constrained width and height (in case shift key is held down)
+		var constrainedWidth = this._moverCurrent.w;
+		var constrainedHeight = this._moverCurrent.h;
+		var constraintSet = false;
+		if(this._selectedWidget && this._selectedWidget.domNode.nodeName === 'IMG'){
+		    var domNode = this._selectedWidget.domNode;
+		    //FIXME: Add natural width/height feature for clip art widgets
+		    var naturalWidth = domNode.naturalWidth;
+		    var naturalHeight = domNode.naturalHeight;
+		    if(typeof naturalHeight == 'number' && naturalHeight > 0 && typeof naturalWidth == 'number' && naturalWidth > 0){
+		        var aspectRatio = naturalWidth / naturalHeight;
+		        if(constrainedWidth < aspectRatio * constrainedHeight){
+		        	constrainedWidth = constrainedHeight * aspectRatio;
+		        }else{
+		        	constrainedHeight = constrainedWidth / aspectRatio;
+		        }
+		        constraintSet = true;
+		    }
+		}
+		if(!constraintSet){
+			if(this._frameIndex === LEFT || this._nobIndex === LEFT || this._frameIndex === RIGHT || this._nobIndex === RIGHT){
+				constrainedHeight = constrainedWidth;
+			}else if(this._frameIndex === TOP || this._nobIndex === TOP || this._frameIndex === BOTTOM || this._nobIndex === BOTTOM){
+				constrainedWidth = constrainedHeight;
+			}else{	// dragging corner - use max
+				if(constrainedWidth > constrainedHeight){
+					constrainedHeight = constrainedWidth;
+				}else{
+					constrainedWidth = constrainedHeight;
+				}
+			}
+		}
+		// Set this._moverCurrentConstrained to hold selection bounds if shift key is held down
+		this._moverCurrentConstrained = { l:this._moverCurrent.l, t:this._moverCurrent.t, w:constrainedWidth, h:constrainedHeight };
+		if(this._frameIndex === LEFT || this._nobIndex === LEFT || this._frameIndex === RIGHT || this._nobIndex === RIGHT){
+			this._moverCurrentConstrained.t -= (this._moverCurrentConstrained.h - this._moverCurrent.h)/2;
+		}
+		if(this._frameIndex === TOP || this._nobIndex === TOP || this._frameIndex === BOTTOM || this._nobIndex === BOTTOM){
+			this._moverCurrentConstrained.l -= (this._moverCurrentConstrained.w - this._moverCurrent.w)/2;
+		}
+
+		var rect = dojo.mixin({}, this._shiftKey ? this._moverCurrentConstrained : this._moverCurrent);
+		var parentIframeOffset = GeomUtils.getBorderBoxPageCoords(this._context.getParentIframe());
+		rect.l -= parentIframeOffset.l;
+		rect.t -= parentIframeOffset.t;
+		this._updateFocusChrome(
+				rect, 
+				false //offScreenAdjust
+		);
+	},
+	
+	//Part of Mover interface
+	onFirstMove: function(mover){
+	},
+	
+	//Part of Mover interface
+	onMoveStart: function(mover){
+	},
+	
+	_moverDoneCleanup: function(){
+		var context = this._context;
 		var cp = context._chooseParent;
 		this._lastEventTarget = null;
 		this._removeKeyHandlers();
-        this._nobs[DRAG_NOB].style.display = 'none';
-        if(this._mover){
-        	var box;
-        	if(this._shiftKey){
-        		box = dojo.mixin({}, this._constrained);
-        	}else{
-        		box = dojo.mixin({}, this._box);
-        	}
-            this._mover = undefined;
-            switch(this._nobIndex){
-            case -1: // frame
-                this.onExtentChange(this, dojo.mixin({l: this._box.l, t: this._box.t}, this._client));
-                break;
-            default:
-            	this.onExtentChange(this, box);
-            }
-        }
 		context.dragMoveCleanup();
-     	cp.parentListDivDelete();
-        this._nobIndex = -1;
-        this._nobBox = null;
-    },
-    
-    onDblClick: function(event) {
-        this.showInline(this._selectedWidget);
-        event.stopPropagation();
-    },
+		cp.parentListDivDelete();
+		this._mover = undefined;
+		this._nobIndex = -1;
+		this._frameIndex = -1;
+	},
+	
+	onMoveStop: function(mover){
+		if(this._moverDragDiv){
+			var parentNode = this._moverDragDiv.parentNode;
+			if(parentNode){
+				parentNode.removeChild(this._moverDragDiv);
+			}
+			this._moverDragDiv = null;
+			// Change widget bounds if any dragging has occurred
+			if(this._moverCurrent.l != this._moverStart.l || this._moverCurrent.t != this._moverStart.t ||
+					this._moverCurrent.w != this._moverStart.w || this._moverCurrent.h != this._moverStart.h){
+				// If 's' key is held down, then CSS parts of MoveCommand only applies to current state
+				var applyToWhichStates = undefined;
+				if(this._selectedWidget && this._selectedWidget.domNode){
+					if(this._sKey){
+						var currentStatesList = States.getStatesListCurrent(this._selectedWidget.domNode);
+						for(var i=0; i<currentStatesList.length; i++){
+							if(currentStatesList[i]){
+								applyToWhichStates = currentStatesList[i];
+								break;
+							}
+						}
+					}else{
+						// See if any of width/height have been set in any of the currently active states
+						// (i.e., one of the states whose results are currently showing on the screen).
+						// If so, then apply the move to that state.
+						applyToWhichStates = States.propertyDefinedForAnyCurrentState(this._selectedWidget.domNode, ['width','height']) ;						
+					}
+				}
+				var newBox = this._shiftKey ? this._moverCurrentConstrained : this._moverCurrent;
+				if(newBox.w == this._moverStart.w){
+					delete newBox.w;
+				}
+				if(newBox.h == this._moverStart.h){
+					delete newBox.h;
+				}
+				// MoveCommand requires either both l and t
+				if(typeof newBox.l != 'number'){
+					newBox.l = this._moverStart.l;
+				}
+				if(typeof newBox.t != 'number'){
+					newBox.t = this._moverStart.t;
+				}
+				// Don't cause a move if left and top haven't changed
+				if(newBox.l == this._moverStart.l && newBox.t == this._moverStart.t){
+					delete newBox.l;
+					delete newBox.t;
+				}
+				var rect = dojo.mixin({}, newBox);
+				if(rect.hasOwnProperty('l')){
+					var parentIframeOffset = GeomUtils.getBorderBoxPageCoords(this._context.getParentIframe());
+					rect.l -= parentIframeOffset.l;
+					rect.t -= parentIframeOffset.t;
+				}
+				this.onExtentChange(this, this._moverStart, rect, applyToWhichStates);
+			} 
+		}
+		this._moverDoneCleanup();
+		
+		// If this._moverMouseUpEvent doesn't exist, then no move happened, which means
+		// mouse down and mouse up were at same location.
+		var event = (this._moverMouseUpEvent || this._moverMouseDownEvent);
+		this._moverMouseDownEvent = null;
+		this._moverMouseUpEvent = null;
+		
+		if(event && event.target){
+			var dblClickInterval = 750;	// .75seconds: big time slot for tablets
+			var clickDistance = 10;	// within 10px: inexact for tablets
+			var dateValue = Date.now();
 
-    onMove: function(mover, box, event){
-        if(this._nobIndex < 0){ // frame
-   
-            // Turn on visibility of DRAG_NOB and set its position
-            // at the current mouse position. The DRAG_NOB will always track the
-            // current mouse location, whereas the current frame DIVs might
-            // jump around due to constraint logic if shift key is down
-            // which would prevent it from noticing the mouseUp event.
-            var drag_nob_style = this._nobs[DRAG_NOB].style;
-            drag_nob_style.display = '';
-            drag_nob_style.left = (event.pageX - this.domNode.offsetLeft - this.size/2) + 'px';
-            drag_nob_style.top = (event.pageY - this.domNode.offsetTop - this.size/2) + 'px';
+			this._mouseDownInfo = null;
+			
+			// Normal browser onDblClick doesn't work because we are interjecting 
+			// an overlay DIV with a mouseDown operation. As a result,
+			// the browser's rules about what is required to trigger an ondblclick are not satisfied.
+			// Therefore, we have to do our own double-click timer logic
+			if(this._lastMouseUp){
+				if(Math.abs(event.pageX - this._lastMouseUp.pageX) <= clickDistance &&
+						Math.abs(event.pageY - this._lastMouseUp.pageY) <= clickDistance &&
+						(dateValue - this._lastMouseUp.dateValue) <= dblClickInterval){
+					this.onDblClick(event);
+				}
+			}
+			this._lastMouseUp = { pageX: event.pageX, pageY: event.pageY, dateValue:dateValue };
+			dojo.stopEvent(event);
+		}
+	},
 
-            this.move(box, event);
-            this._client = {x: event.clientX, y: event.clientY};
-        }else{
-			var b = dojo.mixin({}, this._box);
-            var d = 0;
-            switch(this._nobIndex){
-            case LEFT:
-                d = box.l - this._nobBox.l;
-                this._nobBox.l = box.l;
-                b.l += d;
-                b.w -= d;
-                break;
-            case RIGHT:
-                b.w = box.l;
-                break;
-            case TOP:
-                d = box.t - this._nobBox.t;
-                this._nobBox.t = box.t;
-                b.t += d;
-                b.h -= d;
-                break;
-            case BOTTOM:
-                b.h = box.t;
-                break;
-            case LEFT_TOP:
-                d = box.l - this._nobBox.l;
-                this._nobBox.l = box.l;
-                b.l += d;
-                b.w -= d;
-                d = box.t - this._nobBox.t;
-                this._nobBox.t = box.t;
-                b.t += d;
-                b.h -= d;
-                break;
-            case LEFT_BOTTOM:
-                d = box.l - this._nobBox.l;
-                this._nobBox.l = box.l;
-                b.l += d;
-                b.w -= d;
-                b.h = box.t;
-                break;
-            case RIGHT_TOP:
-                b.w = box.l;
-                d = box.t - this._nobBox.t;
-                this._nobBox.t = box.t;
-                b.t += d;
-                b.h -= d;
-                break;
-            case RIGHT_BOTTOM:
-                b.w = box.l;
-                b.h = box.t;
-                break;
-            }
-            dojo.mixin(this._box, b);
-            dojo.mixin(this._constrained, b);
-            if(this._selectedWidget && this._selectedWidget.domNode.nodeName === 'IMG'){
-                var domNode = this._selectedWidget.domNode;
-                var naturalWidth = domNode.naturalWidth;
-                var naturalHeight = domNode.naturalHeight;
-                if(typeof naturalHeight == 'number' && naturalHeight > 0 && typeof naturalWidth == 'number' && naturalWidth > 0){
-                    var aspectRatio = naturalWidth / naturalHeight;
-                    if(b.w < aspectRatio * b.h){
-                        this._constrained.w = b.h * aspectRatio;
-                    }else{
-                        this._constrained.h = b.w / aspectRatio;
-                    }
-                }
-            }else{
-            	switch(this._nobIndex){
-	                case LEFT:
-	                case RIGHT:
-		                this._constrained.h = b.w;
-		                break;
-	                case TOP:
-	                case BOTTOM:
-		                this._constrained.w = b.h;
-		                break;
-	                default:
-	                	// If dragging corner, use max
-		                if(b.w > b.h){
-		                	this._constrained.h = b.w;
-		                }else{
-		                	this._constrained.w = b.h;
-		                }
-		                break;
-            	}
-            }
-            this._resize(event.shiftKey ? this._constrained : this._box);
-        }
+	onMouseUp: function(event){
+		// Temporarily stash the mouseup event so that the upcoming
+		// onMoveStop handler can process that event.
+		this._moverMouseUpEvent = event;
+	},
 
-    },
+	onDblClick: function(event) {
+		this.showInline(this._selectedWidget);
+		event.stopPropagation();
+	},
 
-    onFirstMove: function(mover){
-        this._mover = mover;
-    },
-
-    //Required for Moveable interface 
-    onMoveStart: function(mover){
-    },
-
-    //Required for Moveable interface
-    onMoveStop: function(mover){
-    },
-    
-    onKeyDown: function(event){
-		if(event){
-	    	dojo.stopEvent(event);
-	    	if(event.keyCode == 16){
-	        	this._shiftKey = true;
-	        	this._resize(this._constrained);   		
-	    	}
+	onKeyDown: function(event){
+		if(event && this._moverDragDiv){
+			dojo.stopEvent(event);
+			if(event.keyCode == dojo.keys.SHIFT){
+				this._shiftKey = true;
+				this._updateFocusChrome(
+						this._shiftKey ? this._moverCurrentConstrained : this._moverCurrent, 
+						false /*offScreenAdjust*/
+				);
+			}else if(event.keyCode == 83){		// 's' key means apply only to current state
+				this._sKey = true;
+			}
 		}else{
 			// If event is undefined, something is wrong - remove the key handlers
 			this._removeKeyHandlers();
 		}
-    },
-    
-    onKeyUp: function(event){
-		if(event){
-	    	dojo.stopEvent(event);
-	    	if(event.keyCode == 16){
-		    	this._shiftKey = false;
-		       	this._resize(this._box);
-	    	}
+	},
+
+	onKeyUp: function(event){
+		if(event && this._moverDragDiv){
+			dojo.stopEvent(event);
+			if(event.keyCode == dojo.keys.SHIFT){
+				this._shiftKey = false;
+				this._updateFocusChrome(
+						this._shiftKey ? this._moverCurrentConstrained : this._moverCurrent, 
+						false /*offScreenAdjust*/
+				);
+			}else if(event.keyCode == 83){		// 's' key means apply only to current state
+				this._sKey = false;
+			}
 		}else{
 			// If event is undefined, something is wrong - remove the key handlers
 			this._removeKeyHandlers();
 		}
-    },
-    
-    _removeKeyHandlers: function(){
+	},
+
+	_removeKeyHandlers: function(){
 		if(this._keyDownHandler){
 			dojo.disconnect(this._keyDownHandler);
 			this._keyDownHandler = null;
@@ -634,24 +695,40 @@ return declare("davinci.ve.Focus", _WidgetBase, {
 			dojo.disconnect(this._keyUpHandler);
 			this._keyUpHandler = null;
 		}
-    },
+	},
 
-    onExtentChange: function(focus, box){
-    },
-    
+	onExtentChange: function(focus, oldBox, newBox, applyToWhichStates){
+	},
+
+	/**
+	 * Returns true if the given node is part of the focus (ie selection) chrome
+	 */
+	isFocusNode: function(node){
+		return dojo.hasClass(node, 'focusDragDiv') || 
+				dojo.hasClass(node, 'editFocusNob') || dojo.hasClass(node, 'editFocusFrame') ||
+				dojo.hasClass(node, 'maqFocus') || dojo.hasClass(node, 'editFocusStdChrome');
+	},
+
+    /**************************************
+     * Theme editor selection routines
+     **************************************/
     showContext: function(context, widget){
-        if(!this._contexDiv){
-            this._context = context;
-            //this._selectedWidget = null;
-            this._createContextPopUp();
-        }
-        this._contexDiv.style.display = "block";
+    	if(this._context.editor.declaredClass == 'davinci.ve.themeEditor.ThemeEditor'){
+    		if(!this._contexDiv){
+	            this._context = context;
+	            //this._selectedWidget = null;
+	            this._createContextPopUp();
+	        }
+	        this._contexDiv.style.display = "block";
+    	}
     },
     
     hideContext: function(){
-        if(this._contexDiv){
-            this._contexDiv.style.display = "none";
-        }
+    	if(this._context.editor.declaredClass == 'davinci.ve.themeEditor.ThemeEditor'){
+	        if(this._contexDiv){
+	            this._contexDiv.style.display = "none";
+	        }
+    	}
     },
     
     _createContextPopUp: function(){
@@ -673,7 +750,7 @@ return declare("davinci.ve.Focus", _WidgetBase, {
         var themeMetadata = this._context.getThemeMeta().metadata;
         var widgetType = themeMetadata.getWidgetType(widget);
         var widgetMetadata = themeMetadata.getMetadata(widgetType);
-        var subwidgets = widgetMetadata.subwidgets;
+        var subwidgets = widgetMetadata ? widgetMetadata.subwidgets : null;
         
         this._displayedWidget = widget;
         if(subwidgets){
@@ -688,7 +765,7 @@ return declare("davinci.ve.Focus", _WidgetBase, {
             this._contexDiv = contexDiv;
             this.domNode.appendChild(contexDiv);
             var span = this._contexDiv.firstElementChild,
-                menuId = this._context._themeName + '_subwidgetmenu',
+                menuId = this._context.theme.name + '_subwidgetmenu',
                 pMenu = dijit.byId(menuId);
             if (pMenu) {
                 pMenu.destroyRecursive(false);
@@ -704,20 +781,40 @@ return declare("davinci.ve.Focus", _WidgetBase, {
             }
             var item = new localDijit.CheckedMenuItem({
                 label: 'WidgetOuterContainer',
-                id: this._context._themeName + '_WidgetOuterContainer',
+                id: this._context.theme.name + '_WidgetOuterContainer',
                 checked: checked,
-                onClick: dojo.hitch(this, "_subwidgetSelected")
+                onClick: dojo.hitch(this, "_subwidgetSelected", this._context.theme.name + '_WidgetOuterContainer')
             });
+            /*
+             *  Issue #3733 To support war file deployments and deployments with differnt root contexts other than maqetta
+             *  the theme editor ex.dojo-theme-editor.html now loads dojo from a relative location instead of a static location
+             *  That change confusses dijit when we create a menu item, the relative path to dojo/resources/blank.gif is not correct
+             *  in the domNode. So the line of code below changes the src attribute of the node from the relative path to an absolute
+             *  path. Interestingly teh node.src property has the correct absolute path, so we just use that.
+             *  At some point in the future we want to move the subwidget context up from the theme editor document to the VE document
+             *  but for now this hack works.
+             */
+            item.domNode.children[0].children[0].setAttribute('src',item.domNode.children[0].children[0].src);
             pMenu.addChild(item);
             this._currentItem = item;
             for (var s in subwidgets){
                 checked = (widget.subwidget === s);
                 var menuItem = new localDijit.CheckedMenuItem({
                     label: s,
-                    id: this._context._themeName + '_' + s,
+                    id: this._context.theme.name + '_' + s,
                     checked: checked,
-                    onClick: dojo.hitch(this, "_subwidgetSelected")
+                    onClick: dojo.hitch(this, "_subwidgetSelected", this._context.theme.name + '_' + s)
                 });
+                /*
+                 *  Issue #3733 To support war file deployments and deployments with differnt root contexts other than maqetta
+                 *  the theme editor ex.dojo-theme-editor.html now loads dojo from a relative location instead of a static location
+                 *  That change confusses dijit when we create a menu item, the relative path to dojo/resources/blank.gif is not correct
+                 *  in the domNode. So the line of code below changes the src attribute of the node from the relative path to an absolute
+                 *  path. Interestingly teh node.src property has the correct absolute path, so we just use that.
+                 *  At some point in the future we want to move the subwidget context up from the theme editor document to the VE document
+                 *  but for now this hack works.
+                 */
+                menuItem.domNode.children[0].children[0].setAttribute('src',menuItem.domNode.children[0].children[0].src);
                 pMenu.addChild(menuItem);
                 if (checked) {
                     this._currentItem = menuItem;
@@ -729,6 +826,8 @@ return declare("davinci.ve.Focus", _WidgetBase, {
             this._connections = [];
             this._connections.push(dojo.subscribe("/davinci/ui/subwidgetSelectionChanged",dojo.hitch(this,this._subwidgetSelectedChange)));
             this._connections.push(dojo.subscribe("/davinci/states/state/changed", dojo.hitch(this, this._updateSubwidgetListForState)));
+        }else{
+        	this._contexDiv.innerHTML = '';
         }
 
     },
@@ -737,11 +836,10 @@ return declare("davinci.ve.Focus", _WidgetBase, {
         e.stopPropagation();
     },
     
-    _subwidgetSelected: function(e){
+    _subwidgetSelected: function(id, e){
         e.stopPropagation();
         var localDijit = this._context.getDijit();
-        var item = localDijit.byId(e.currentTarget.id);
-        //var item = dijit.byId(e.currentTarget.id);
+        var item = localDijit.byId(id);
         var subwidget;
         if (item.checked){
             if (this._currentItem && item != this._currentItem) {
@@ -750,14 +848,13 @@ return declare("davinci.ve.Focus", _WidgetBase, {
             this._currentItem = item;
             subwidget = this._currentItem.label;
         } else {
-            //this._currentItem = dijit.byId(this._context._themeName + '_WidgetOuterContainer');
-            this._currentItem = localDijit.byId(this._context._themeName + '_WidgetOuterContainer');
+            this._currentItem = localDijit.byId(this._context.theme.name + '_WidgetOuterContainer');
             if (this._currentItem) {
                 this._currentItem.set("checked", true);
             }
             subwidget = null;
         }
-        if (e.currentTarget.id === (this._context._themeName + '_WidgetOuterContainer')){
+        if (e.currentTarget.id === (this._context.theme.name + '_WidgetOuterContainer')){
             subwidget = null;
         }
         dojo.publish("/davinci/ui/subwidgetSelectionChanged",[{subwidget: subwidget, origin: this.declaredClass}]);
@@ -776,12 +873,12 @@ return declare("davinci.ve.Focus", _WidgetBase, {
                 this._currentItem.set("checked", false); // unset the one we have
             }
             if (e.subwidget){
-                this._currentItem = localDijit.byId(this._context._themeName + '_' + e.subwidget);
+                this._currentItem = localDijit.byId(this._context.theme.name + '_' + e.subwidget);
                 if (this._currentItem) {
                     this._currentItem.set("checked", true);
                 }
             } else{
-                this._currentItem = localDijit.byId(this._context._themeName + '_WidgetOuterContainer');
+                this._currentItem = localDijit.byId(this._context.theme.name + '_WidgetOuterContainer');
                 if (this._currentItem) {
                     this._currentItem.set("checked", true);
                 }
@@ -792,8 +889,13 @@ return declare("davinci.ve.Focus", _WidgetBase, {
     
     
     _updateSubwidgetListForState: function() {
-        if (this._context._selectedWidget && this._displayedWidget === this._context._selectedWidget) {
-            var editor = davinci.Runtime.currentEditor,
+ 
+    	if (this._context.editor != Runtime.currentEditor){
+            // not for us
+            return;
+        }
+        if (this._context._selectedWidget && this._displayedWidget === this._context._selectedWidget && this._cm) {
+            var editor = Runtime.currentEditor,
                 themeMetadata = editor._theme;
             this._cm.getChildren().forEach(function(child) {
                 var subwidget = child.label;
@@ -819,6 +921,7 @@ return declare("davinci.ve.Focus", _WidgetBase, {
     },
     
     _clearList: function() {
+  
         if (this._cm){
             this._cm.destroyRecursive(false);
             delete this._cm;
@@ -840,6 +943,7 @@ return declare("davinci.ve.Focus", _WidgetBase, {
     		}
     	}
     }
+	
 });
 
 });

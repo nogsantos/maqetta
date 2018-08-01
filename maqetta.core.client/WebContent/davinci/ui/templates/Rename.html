@@ -1,21 +1,14 @@
 <div>
-	<table>
-	<tr>
-	<td class="NewProjectDialogLabel">Name:</td><td><input class='templateInput' type='text' dojoAttachPoint="_newName"></input></td><td><div dojoAttachPoint='_error4'></div></td>
-	</tr>
-	
-	</table>
+	<div class="dijitDialogPaneContentArea">
+		<table>
+			<tr>
+				<td class="NewProjectDialogLabel">${renameNewLabel}</td><td><input class='templateInput' type='text' dojoAttachPoint="_newName"></input></td><td><div dojoAttachPoint='_error4'></div></td>
+			</tr>		
+		</table>
+	</div>
 
-	<table class='templateTable'> 
-			<tr> 
-			<td class='templateFiller3'>&nbsp;</td>
-				<td class='templateFiller4'>&nbsp;</td> 
-				<td class='templateButton'><span dojoType='dijit.form.Button' type='submit' dojoAttachPoint="_okButton" dojoAttachEvent='onClick:okButton' label='${buttonOk}' disabled /></td> 
-				<td class='templateFiller4'>&nbsp;</td> 
-				<td class='templateButton'><span dojoType='dijit.form.Button' dojoAttachEvent='onClick:cancelButton' label='${buttonCancel}'/></td> 
-				<td class='templateFiller4'>&nbsp;</td> 
-				<td class='templateFiller3'>&nbsp;</td>
-			</tr> 
-		</table> 
-		
+	<div class="dijitDialogPaneActionBar">
+		<button dojoType='dijit.form.Button' dojoAttachPoint="_okButton" dojoAttachEvent='onClick:okButton' label='${renameButtonLabel}' class="maqPrimaryButton" type="submit" disabled></button>
+		<button dojoType='dijit.form.Button' dojoAttachEvent='onClick:cancelButton' label='${buttonCancel}' class="maqSecondaryButton"></button>
+	</div>
 </div>

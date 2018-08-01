@@ -14,13 +14,31 @@
 					"value": "left"
 				},
 				{
+					"value": "right"
+				},
+				{
 					"value": "center"
 				},
 				{
-					"value": "right"
+					"value": "justify"
+				},
+				{
+					"value": "char"
 				}
 			],
-			"defaultValue": "left"
+			"defaultValue": "center",
+			"description": "Not supported in HTML5.",
+			"hidden": "true"
+		},
+		"char": {
+			"datatype": "character",
+			"description": "Not supported in HTML5.",
+			"hidden": true
+		},
+		"charoff": {
+			"datatype": "number",
+			"description": "Not supported in HTML5.",
+			"hidden": true
 		},
 		"valign": {
 			"datatype": "string",
@@ -41,8 +59,14 @@
 					"value": "baseline"
 				}
 			],
-			"defaultValue": "middle"
+			"defaultValue": "middle",
+			"description": "Not supported in HTML5.",
+			"hidden": true
 		}
 	},
-	"content": "<thead></thead>"
+	"content": "<thead></thead>",
+	"title": {
+		"type": "text/html",
+		"value": "<p>The HTML tfoot element represents the block of rows that consist of the column labels (headers) for the parent table element.</p>"
+	}
 }

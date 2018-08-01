@@ -1,5 +1,6 @@
 package org.davinci.server.user;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -33,15 +34,15 @@ public class LibrarySettings extends XMLFile {
     }
  
     public static ILibInfo[] getAllDefaultLibs() {
-        Library[] all = ServerManager.getServerManger().getLibraryManager().getAllLibraries();
+        Library[] all = ServerManager.getServerManager().getLibraryManager().getAllLibraries();
         ILibInfo[] results = new ILibInfo[all.length];
         for (int i = 0; i < all.length; i++) {
-            results[i] = new LibInfo(all[i].getID(), all[i].getName(), all[i].getVersion(), all[i].getDefaultRoot());
+            results[i] = new LibInfo(all[i].getID(), all[i].getName(), all[i].getVersion(), all[i].getDefaultRoot(), all[i].getRequired());
         }
         return results;
     }
     protected String[] getAttributeNames() {
-        return new String[] { "id", "name", "version", "virtualRoot", "base" };
+        return new String[] { "id", "name", "version", "virtualRoot", "base", "required" };
     }
 	protected String getAttributeValue(String attribute, Object object) {
 		  ILibInfo libInfo = (ILibInfo) object;
@@ -60,6 +61,10 @@ public class LibrarySettings extends XMLFile {
 		  if(attribute.equalsIgnoreCase("base")){
 			  return null;
 		  }
+		  if(attribute.equalsIgnoreCase("required")){
+			  return libInfo.getRequired();
+		  }
+		  
 		return null;
 	
 	}
@@ -75,9 +80,9 @@ public class LibrarySettings extends XMLFile {
         return "library";
     }
 
-    public boolean addLibrary(String name, String version, String id, String virtualRoot) {
+    public boolean addLibrary(String name, String version, String id, String virtualRoot, String required) throws IOException {
 
-        LibInfo link = new LibInfo(id, name, version, virtualRoot);
+        LibInfo link = new LibInfo(id, name, version, virtualRoot, required);
 
         LibInfo[] newLibs = new LibInfo[libs.length + 1];
         System.arraycopy(libs, 0, newLibs, 0, libs.length);
@@ -87,7 +92,7 @@ public class LibrarySettings extends XMLFile {
         return true;
     }
 
-    public boolean removeLibrary(String id, String version, String base) {
+    public boolean removeLibrary(String id, String version, String base) throws IOException {
         for (int i = 0; i < this.libs.length; i++) {
             if (this.libs[i].getId().equals(id) && this.libs[i].getVersion().equals(version)) {
                 LibInfo[] newLinks = new LibInfo[libs.length - 1];
@@ -102,9 +107,9 @@ public class LibrarySettings extends XMLFile {
 
     }
 
-    public void modifyLibrary(String id, String version, String virtualRoot, String base) {
+    public void modifyLibrary(String id, String version, String virtualRoot, String base, String required) throws IOException {
         this.removeLibrary(id, version, base);
-        this.addLibrary(id, version, id, virtualRoot);
+        this.addLibrary(id, version, id, virtualRoot, required);
     }
 
     protected Object createObject(Element element, String[] attributeNames, String[] attributeValues) {
@@ -114,6 +119,7 @@ public class LibrarySettings extends XMLFile {
     	String version = null;
     	String virtualRoot = null;
     	String base = null;
+    	String required = null;
     	
     	for(int i=0;i<attributeNames.length;i++){
     		if(attributeNames[i].equalsIgnoreCase("id"))
@@ -126,13 +132,15 @@ public class LibrarySettings extends XMLFile {
     			virtualRoot = attributeValues[i];
     		if(attributeNames[i].equalsIgnoreCase("base"))
     			base = attributeValues[i];
+    		if(attributeNames[i].equalsIgnoreCase("required"))
+    			required = attributeValues[i];
     	}
     	
-    	ILibInfo link = new LibInfo(id,name,version,virtualRoot);
+    	ILibInfo link = new LibInfo(id,name,version,virtualRoot, required);
         return link;
     }
 
-    public void save() {
+    public void save() throws IOException {
         this.save(libFile, Arrays.asList(this.libs));
     }
 }

@@ -6,9 +6,10 @@ define([
     	"../ve/commands/AddCommand",
     	"../ve/commands/MoveCommand",
     	"../ve/commands/ResizeCommand",
+    	"../ve/tools/CreateTool",
     	"../ve/widget",
     	"../ve/metadata"
-], function(declare, Action, Workbench, CompoundCommand, AddCommand, MoveCommand, ResizeCommand, widgetUtils){
+], function(declare, Action, Workbench, CompoundCommand, AddCommand, MoveCommand, ResizeCommand, CreateTool, widgetUtils, Metadata){
 
 return declare("davinci.actions.StickyNoteAction", Action, {
 
@@ -38,6 +39,10 @@ return declare("davinci.actions.StickyNoteAction", Action, {
 			command.add(new AddCommand(widget,
 					/* args.parent ||*/ e.getContext().getContainerNode()/*,*/
 				 /*args.index*/));
+			
+			// If preference says to add new widgets to the current custom state,
+			// then add appropriate StyleCommands
+			CreateTool.prototype.checkAddToCurrentState(command, widget);
 	
 //			if(args.position){
 //				command.add(new MoveCommand(widget, args.position.x, args.position.y));
@@ -51,26 +56,23 @@ return declare("davinci.actions.StickyNoteAction", Action, {
 					h = args.size && args.size.h;
 				command.add(new ResizeCommand(widget, w, h));
 			}
+			
 			e.getContext().getCommandStack().execute(command);
-			var inLineEdit = davinci.ve.metadata.queryDescriptor(widget.type, "inlineEdit");
-			if (inLineEdit && inLineEdit.displayOnCreate && inLineEdit.displayOnCreate.toLowerCase() == 'true') {
-				e.getContext().select(widget,null,true); // display inline
-			} else {
-				e.getContext().select(widget); // no inline on create
-			}
+			Metadata.getSmartInput(widget.type).then(function(inlineEdit){			
+				if (inlineEdit && inlineEdit.displayOnCreate) {
+					e.getContext().select(widget, null, true); // display inline
+				} else {
+					e.getContext().select(widget); // no inline on create
+				}
+			}.bind(this));
+
 		}
 
 	},
 	
 	isEnabled: function(selection){
 		var e = Workbench.getOpenEditor();
-		if (e && e.getContext) {
-	//	if (e.declaredClass == 'davinci.themeEditor.ThemeEditor') // this is a hack to only support undo for theme editor for 0.5
-			return e.getContext().getCommandStack().canRedo();
-		} else {
-			return false;
-		}
-		//	return davinci.Runtime.commandStack.canRedo();
+		return (e && e.getContext);
 	}
 });
 });

@@ -1,6 +1,6 @@
 /*******************************************************************************
  * @license
- * Copyright (c) 2009, 2011 IBM Corporation and others.
+ * Copyright (c) 2009, 2012 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials are made 
  * available under the terms of the Eclipse Public License v1.0 
  * (http://www.eclipse.org/legal/epl-v10.html), and the Eclipse Distribution 
@@ -9,20 +9,17 @@
  * Contributors: IBM Corporation - initial API and implementation
  ******************************************************************************/
  
- /*global define window */
+ /*global define*/
  /*jslint maxerr:150 browser:true devel:true laxbreak:true regexp:false*/
 
-define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/eventTarget', 'orion/textview/tooltip'], function(mKeyBinding, mEventTarget, mTooltip) {
-
-	/**
-	 * @name orion.editor.util
-	 * @class Basic helper functions used by <code>orion.editor</code>.
-	 */
-	var util;
+define("orion/editor/editor", ['i18n!orion/editor/nls/messages', 'orion/editor/keyBinding', 'orion/editor/eventTarget', 'orion/editor/tooltip', 'orion/editor/annotations', 'orion/editor/util'], function(messages, mKeyBinding, mEventTarget, mTooltip, mAnnotations, util) { //$NON-NLS-6$ //$NON-NLS-5$ //$NON-NLS-4$ //$NON-NLS-3$ //$NON-NLS-2$ //$NON-NLS-1$ //$NON-NLS-0$
+	var Animation;
+	
+	var HIGHLIGHT_ERROR_ANNOTATION = "orion.annotation.highlightError"; //$NON-NLS-0$
 
 	/**
 	 * @name orion.editor.Editor
-	 * @class An <code>Editor</code> is a user interface for editing text that provides additional features over the basic {@link orion.textview.TextView}.
+	 * @class An <code>Editor</code> is a user interface for editing text that provides additional features over the basic {@link orion.editor.TextView}.
 	 * Some of <code>Editor</code>'s features include:
 	 * <ul>
 	 * <li>Additional actions and key bindings for editing text</li>
@@ -39,15 +36,15 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 	 * @param {Object} options.domNode
 	 * @param {Object} options.keyBindingFactory
 	 * @param {Object} options.lineNumberRulerFactory
+	 * @param {Object} options.foldingRulerFactory
 	 * @param {Object} options.statusReporter
-	 * @param {Object} options.syntaxHighlightProviders
 	 * @param {Object} options.textViewFactory
 	 * @param {Object} options.undoStackFactory
 	 * @param {Object} options.textDNDFactory
 	 *
-	 * @borrows orion.textview.EventTarget#addEventListener as #addEventListener
-	 * @borrows orion.textview.EventTarget#removeEventListener as #removeEventListener
-	 * @borrows orion.textview.EventTarget#dispatchEvent as #dispatchEvent
+	 * @borrows orion.editor.EventTarget#addEventListener as #addEventListener
+	 * @borrows orion.editor.EventTarget#removeEventListener as #removeEventListener
+	 * @borrows orion.editor.EventTarget#dispatchEvent as #dispatchEvent
 	 */
 	function Editor(options) {
 		this._textViewFactory = options.textViewFactory;
@@ -60,9 +57,11 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 		this._keyBindingFactory = options.keyBindingFactory;
 		this._statusReporter = options.statusReporter;
 		this._domNode = options.domNode;
-		this._syntaxHighlightProviders = options.syntaxHighlightProviders;
 		
+		this._annotationStyler = null;
+		this._annotationModel = null;
 		this._annotationRuler = null;
+		this._lineNumberRuler = null;
 		this._overviewRuler = null;
 		this._foldingRuler = null;
 		this._dirty = false;
@@ -71,40 +70,182 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 		this._keyModes = [];
 	}
 	Editor.prototype = /** @lends orion.editor.Editor.prototype */ {
-		errorType: "orion.annotation.error",
-		warningType: "orion.annotation.warning",
-		taskType: "orion.annotation.task",
-		foldingType: "orion.annotation.folding",
-		currentBracketType: "orion.annotation.currentBracket",
-		matchingBracketType: "orion.annotation.matchingBracket",
-		currentLineType: "orion.annotation.currentLine",
-		highlightErrorType: "orion.annotation.highlightError",
-		
 		/**
-		 * Returns the underlying <code>TextView</code> used by this editor. 
-		 * @returns orion.textview.TextView
+		 * Destroys the editor.
 		 */
-		getTextView: function() {
-			return this._textView;
+		destroy: function() {
+			this.uninstallTextView();
+			this._textViewFactory = this._undoStackFactory = this._textDNDFactory = 
+			this._annotationFactory = this._foldingRulerFactory = this._lineNumberRulerFactory = 
+			this._contentAssistFactory = this._keyBindingFactory = this._statusReporter =
+			this._domNode = null;
 		},
-		
 		/**
-		 * @private
+		 * Returns the annotation model of the editor. 
+		 *
+		 * @returns {orion.editor.AnnotationModel}
 		 */
-		reportStatus: function(message, type) {
-			if (this._statusReporter) {
-				this._statusReporter(message, type);
-			} else {
-				window.alert(type === "error" ? "ERROR: " + message : message);
-			}
+		getAnnotationModel: function() {
+			return this._annotationModel;
 		},
-		
+		/**
+		 * Returns the annotation ruler of the editor. 
+		 *
+		 * @returns {orion.editor.AnnotationRuler}
+		 */
+		getAnnotationRuler: function() {
+			return this._annotationRuler;
+		},
+		/**
+		 * Returns the annotation styler of the editor. 
+		 *
+		 * @returns {orion.editor.AnnotationStyler}
+		 */
+		getAnnotationStyler: function() {
+			return this._annotationStyler;
+		},
+		/**
+		 * Returns the folding ruler of the editor. 
+		 *
+		 * @returns {orion.editor.FoldingRuler}
+		 */
+		getFoldingRuler: function() {
+			return this._foldingRuler;
+		},
+		/**
+		 * Returns the line number ruler of the editor. 
+		 *
+		 * @returns {orion.editor.LineNumberRuler}
+		 */
+		getLineNumberRuler: function() {
+			return this._lineNumberRuler;
+		},
+		/**
+		 * Returns the base text model of this editor.
+		 *
+		 * @returns {orion.editor.TextModel}
+		 */
 		getModel: function() {
 			var model = this._textView.getModel();
 			if (model.getBaseModel) {
 				model = model.getBaseModel();
 			}
 			return model;
+		},
+		/**
+		 * Returns the overview ruler of the editor. 
+		 *
+		 * @returns {orion.editor.OverviewRuler}
+		 */
+		getOverviewRuler: function() {
+			return this._overviewRuler;
+		},
+		/**
+		 * Returns the underlying <code>TextView</code> used by this editor. 
+		 * @returns {orion.editor.TextView} the editor text view.
+		 */
+		getTextView: function() {
+			return this._textView;
+		},
+		/**
+		 * Returns the editor title. 
+		 *
+		 * @returns {String} the editor title.
+		 */
+		getTitle: function() {
+			return this._title;
+		},
+		
+		/**
+		 * Returns the editor's key modes.
+		 *
+		 * @returns {Array} the editor key modes.
+		 */
+		getKeyModes: function() {
+			return this._keyModes;
+		},
+		
+		/**
+		 * Returns <code>true</code> if the editor is dirty; <code>false</code> otherwise.
+		 * @returns {Boolean} 
+		 */
+		isDirty: function() {
+			return this._dirty;
+		},
+		/**
+		 * Sets whether the annotation ruler is visible.
+		 *
+		 * @param {Boolean} visible <code>true</code> to show ruler, <code>false</code> otherwise
+		 */
+		setAnnotationRulerVisible: function(visible) {
+			if (this._annotationRulerVisible === visible) { return; }
+			this._annotationRulerVisible = visible;
+			if (!this._annotationRuler) { return; }
+			var textView = this._textView;
+			if (visible) {
+				textView.addRuler(this._annotationRuler, 0);
+			} else {
+				textView.removeRuler(this._annotationRuler);
+			}
+		},
+		/**
+		 * Sets whether the folding ruler is visible.
+		 *
+		 * @param {Boolean} visible <code>true</code> to show ruler, <code>false</code> otherwise
+		 */
+		setFoldingRulerVisible: function(visible) {
+			if (this._foldingRulerVisible === visible) { return; }
+			this._foldingRulerVisible = visible;
+			if (!this._foldingRuler) { return; }
+			var textView = this._textView;
+			if (!textView.getModel().getBaseModel) { return; }
+			if (visible) {
+				textView.addRuler(this._foldingRuler, 100);
+			} else {
+				textView.removeRuler(this._foldingRuler);
+			}
+		},
+		/**
+		 * Sets whether the editor is dirty.
+		 *
+		 * @param {Boolean} dirty
+		 */
+		setDirty: function(dirty) {
+			if (this._dirty === dirty) { return; }
+			this._dirty = dirty;
+			this.onDirtyChanged({type: "DirtyChanged"}); //$NON-NLS-0$
+		},
+		/**
+		 * Sets whether the line numbering ruler is visible.
+		 *
+		 * @param {Boolean} visible <code>true</code> to show ruler, <code>false</code> otherwise
+		 */
+		setLineNumberRulerVisible: function(visible) {
+			if (this._lineNumberRulerVisible === visible) { return; }
+			this._lineNumberRulerVisible = visible;
+			if (!this._lineNumberRuler) { return; }
+			var textView = this._textView;
+			if (visible) {
+				textView.addRuler(this._lineNumberRuler, 1);
+			} else {
+				textView.removeRuler(this._lineNumberRuler);
+			}
+		},
+		/**
+		 * Sets whether the overview ruler is visible.
+		 *
+		 * @param {Boolean} visible <code>true</code> to show ruler, <code>false</code> otherwise
+		 */
+		setOverviewRulerVisible: function(visible) {
+			if (this._overviewRulerVisible === visible) { return; }
+			this._overviewRulerVisible = visible;
+			if (!this._overviewRuler) { return; }
+			var textView = this._textView;
+			if (visible) {
+				textView.addRuler(this._overviewRuler);
+			} else {
+				textView.removeRuler(this._overviewRuler);
+			}
 		},
 		
 		mapOffset: function(offset, parent) {
@@ -147,7 +288,7 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 			var annotations = annotationModel.getAnnotations(offset, offset + 1);
 			while (annotations.hasNext()) {
 				var annotation = annotations.next();
-				if (annotation.type === "orion.annotation.folding") {
+				if (annotation.type === mAnnotations.AnnotationType.ANNOTATION_FOLDING) {
 					if (annotation.expand) {
 						annotation.expand();
 						annotationModel.modifyAnnotation(annotation);
@@ -182,32 +323,11 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 			textView.setText(text, start, end);
 		},
 		
+		/**
+		 * @deprecated use #setFoldingRulerVisible
+		 */
 		setFoldingEnabled: function(enabled) {
-			this._foldingEnabled = enabled;
-			this._updateFoldingRuler();
-		},
-		
-		_updateFoldingRuler: function() {
-			var textView = this._textView;
-			if (this._foldingEnabled) {
-				if (!this._foldingRuler && this._foldingRulerFactory && textView.getModel().getBaseModel && this._foldingEnabled) {
-					/*
-					* TODO - UndoStack relies on this line to ensure that collapsed regions are expanded 
-					* when the undo operation happens to those regions. This line needs to be remove when the
-					* UndoStack is fixed.
-					*/
-					textView.annotationModel = this._annotationModel;
-					
-					this._foldingRuler = this._foldingRulerFactory.createFoldingRuler(this._annotationModel);
-					this._foldingRuler.addAnnotationType(this.foldingType);
-					textView.addRuler(this._foldingRuler);
-				}
-			} else {
-				if (this._foldingRuler) { 
-					textView.removeRuler(this._foldingRuler);
-					this._foldingRuler = null;
-				}
-			}
+			this.setFoldingRulerVisible(enabled);
 		},
 		
 		setSelection: function(start, end, show) {
@@ -223,14 +343,13 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 		},
 				
 		/**
-		 * @static
-		 * @param {orion.textview.TextView} textView
+		 * @param {orion.editor.TextView} textView
 		 * @param {Number} start
 		 * @param {Number} [end]
 		 * @param {function} callBack A call back function that is used after the move animation is done
 		 * @private
 		 */
-		moveSelection: function(start, end, callBack) {
+		moveSelection: function(start, end, callBack, focus) {
 			end = end || start;
 			var textView = this._textView;
 			this.setSelection(start, end, false);
@@ -242,7 +361,7 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 			if (linePixel < topPixel || linePixel > bottomPixel) {
 				var height = bottomPixel - topPixel;
 				var target = Math.max(0, linePixel- Math.floor((linePixel<topPixel?3:1)*height / 4));
-				var a = new util.Animation({
+				var a = new Animation({
 					node: textView,
 					duration: 300,
 					curve: [topPixel, target],
@@ -251,7 +370,9 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 					},
 					onEnd: function() {
 						textView.showSelection();
-						textView.focus();
+						if (focus === undefined || focus) {
+							textView.focus();
+						}
 						if(callBack) {
 							callBack();
 						}
@@ -260,32 +381,27 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 				a.play();
 			} else {
 				textView.showSelection();
-				textView.focus();
+				if (focus === undefined || focus) {
+					textView.focus();
+				}
 				if(callBack) {
 					callBack();
 				}
 			}
 		},
-		/**
-		 * Returns <code>true</code> if the editor is dirty; <code>false</code> otherwise.
-		 * @returns {Boolean} 
-		 */
-		isDirty : function() {
-			return this._dirty;
-		},
-		/**
-		 * Sets whether the editor is dirty.
-		 *
-		 * @param {Boollean} dirty
-		 */
-		setDirty: function(dirty) {
-			if (this._dirty === dirty) { return; }
-			this._dirty = dirty;
-			this.onDirtyChanged({type: "DirtyChanged"});
-		},
+		
 		/** @private */
 		checkDirty : function() {
 			this.setDirty(!this._undoStack.isClean());
+		},
+		
+		/**
+		 * @private
+		 */
+		reportStatus: function(message, type, isAccessible) {
+			if (this._statusReporter) {
+				this._statusReporter(message, type, isAccessible);
+			}
 		},
 		
 		/** @private */
@@ -297,104 +413,23 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 			if (!annotationStyler) { return null; }
 			var offset = textView.getOffsetAtLocation(x, y);
 			if (offset === -1) { return null; }
-			var iter = annotationModel.getAnnotations(offset, offset + 1);
-			var annotation, annotations = [];
-			while (iter.hasNext()) {
-				annotation = iter.next();
-				if (!annotationStyler.isAnnotationTypeVisible(annotation.type) || !annotation.rangeStyle) { continue; }
-				annotations.push(annotation);
+			offset = this.mapOffset(offset);
+			var annotations = annotationStyler.getAnnotationsByType(annotationModel, offset, offset + 1);
+			var rangeAnnotations = [];
+			for (var i = 0; i < annotations.length; i++) {
+				if (annotations[i].rangeStyle) {
+					rangeAnnotations.push(annotations[i]);
+				}
 			}
-			if (annotations.length === 0) { return null; }
-			var pt = textView.convert({x: x, y: y}, "document", "page");
+			if (rangeAnnotations.length === 0) { return null; }
+			var pt = textView.convert({x: x, y: y}, "document", "page"); //$NON-NLS-1$ //$NON-NLS-0$
 			var info = {
-				contents: annotations,
-				anchor: "left",
+				contents: rangeAnnotations,
+				anchor: "left", //$NON-NLS-0$
 				x: pt.x + 10,
 				y: pt.y + 20
 			};
 			return info;
-		}, 
-		
-		/**
-		 * 
-		 * @returns {orion.textview.AnnotationModel}
-		 */
-		getAnnotationModel : function() {
-			return this._annotationModel;
-		},
-
-		/**
-		 * Helper for finding occurrences of str in the editor contents.
-		 * @param {String} str
-		 * @param {Number} searchStart offset in the base model where the search should start
-		 * @param {Boolean} [ignoreCase=false] whether or not the search is case sensitive
-		 * @param {Boolean} [reverse=false] whether the search should be backwards
-		 * @return {Object} An object giving the match details, or <code>null</code> if no match found. The returned 
-		 * object will have the properties:<br />
-		 * {Number} index<br />
-		 * {Number} length 
-		 */
-		doFind: function(str, searchStart, ignoreCase, reverse) {
-			var text = this.getText();
-			if (ignoreCase) {
-				str = str.toLowerCase();
-				text = text.toLowerCase();
-			}
-			
-			var i;
-			if (reverse) {
-				text = text.split("").reverse().join("");
-				str = str.split("").reverse().join("");
-				searchStart = text.length - searchStart - 1;
-				i = text.indexOf(str, searchStart);
-				if (i !== -1) {
-					return {index: text.length - str.length - i, length: str.length};
-				}
-			} else {
-				i = text.indexOf(str, searchStart);
-				if (i !== -1) {
-					return {index: i, length: str.length};
-				}
-			}
-			return null;
-		},
-		
-		/**
-		 * Helper for finding regex matches in the editor contents. Use {@link #doFind} for simple string searches.
-		 * @param {String} pattern A valid regexp pattern.
-		 * @param {String} flags Valid regexp flags: [is]
-		 * @param {Number} searchStart offset in the base model where the search should start
-		 * @param {Boolean} [reverse=false] whether the search should be backwards
-		 * @return {Object} An object giving the match details, or <code>null</code> if no match found. The returned object
-		 * will have the properties:<br />
-		 * {Number} index<br />
-		 * {Number} length 
-		 */
-		doFindRegExp: function(pattern, flags, searchStart, reverse) {
-			if (!pattern) {
-				return null;
-			}
-			
-			flags = flags || "";
-			// 'g' makes exec() iterate all matches, 'm' makes ^$ work linewise
-			flags += (flags.indexOf("g") === -1 ? "g" : "") + (flags.indexOf("m") === -1 ? "m" : "");
-			var regexp = new RegExp(pattern, flags);
-			var text = this.getText();
-			var result = null,
-			    match = null;
-			if (reverse) {
-				while (true) {
-					result = regexp.exec(text);
-					if (result && result.index <= searchStart) {
-						match = {index: result.index, length: result[0].length};
-					} else {
-						return match;
-					}
-				}
-			} else {
-				result = regexp.exec(text.substring(searchStart));
-				return result && {index: result.index + searchStart, length: result[0].length};
-			}
 		},
 		
 		/** @private */
@@ -407,46 +442,25 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 			var lineIndex = model.getLineAtOffset(newSelection.start);
 			var newEmpty = newSelection.start === newSelection.end;
 			var oldEmpty = !oldSelection || oldSelection.start === oldSelection.end;
-			if (!(oldLineIndex === lineIndex && oldEmpty && newEmpty)) {
-				var remove = this._currentLineAnnotation ? [this._currentLineAnnotation] : null;
-				this._currentLineAnnotation = null;
-				var add;
-				if (newEmpty) {
-					var start = model.getLineStart(lineIndex);
-					var end = model.getLineEnd(lineIndex);
-					if (model.getBaseModel) {
-						start = model.mapOffset(start);
-						end = model.mapOffset(end);
-					}
-					this._currentLineAnnotation = {
-						start: start,
-						end: end,
-						type: this.currentLineType,
-						title: "Current Line",
-						html: "<div class='annotationHTML currentLine'></div>",
-						overviewStyle: {styleClass: "annotationOverview currentLine"},
-						lineStyle: {styleClass: "annotationLine currentLine"}
-					};
-					add = [this._currentLineAnnotation];
-				}
-				annotationModel.replaceAnnotations(remove, add);
+			var start = model.getLineStart(lineIndex);
+			var end = model.getLineEnd(lineIndex);
+			if (model.getBaseModel) {
+				start = model.mapOffset(start);
+				end = model.mapOffset(end);
 			}
-		},
-		
-		highlightAnnotations: function() {
-			if (this._annotationStyler) {
-				this._annotationStyler.destroy();
-				this._annotationStyler = null;
+			var annotation = this._currentLineAnnotation; 
+			if (oldLineIndex === lineIndex && oldEmpty && newEmpty && annotation && annotation.start === start && annotation.end === end) {
+				return;
 			}
-			if (this._annotationFactory) {
-				this._annotationStyler = this._annotationFactory.createAnnotationStyler(this.getTextView(), this._annotationModel);
-				this._annotationStyler.addAnnotationType(this.errorType);
-				this._annotationStyler.addAnnotationType(this.warningType);
-				this._annotationStyler.addAnnotationType(this.matchingBracketType);
-				this._annotationStyler.addAnnotationType(this.currentBracketType);
-				this._annotationStyler.addAnnotationType(this.currentLineType);
-				this._annotationStyler.addAnnotationType(this.highlightErrorType);
+			var remove = annotation ? [annotation] : null;
+			var add;
+			if (newEmpty) {
+				var type = mAnnotations.AnnotationType.ANNOTATION_CURRENT_LINE;
+				annotation = mAnnotations.AnnotationType.createAnnotation(type, start, end);
+				add = [annotation];
 			}
+			this._currentLineAnnotation = annotation;
+			annotationModel.replaceAnnotations(remove, add);
 		},
 		
 		/**
@@ -462,8 +476,9 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 				this._textDND = this._textDNDFactory.createTextDND(this, this._undoStack);
 			}
 			if (this._contentAssistFactory) {
-				this._contentAssist = this._contentAssistFactory(this);
-				this._keyModes.push(this._contentAssist);
+				var contentAssistMode = this._contentAssistFactory.createContentAssistMode(this);
+				this._keyModes.push(contentAssistMode);
+				this._contentAssist = contentAssistMode.getContentAssist();
 			}
 			
 			var editor = this, textView = this._textView;
@@ -497,11 +512,11 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 					self._highlightCurrentLine(e.newValue, e.oldValue);
 				}
 			};
-			textView.addEventListener("ModelChanged", this._listener.onModelChanged);
-			textView.addEventListener("Selection", this._listener.onSelection);
-			textView.addEventListener("MouseOver", this._listener.onMouseOver);
-			textView.addEventListener("MouseOut", this._listener.onMouseOut);
-			textView.addEventListener("MouseMove", this._listener.onMouseMove);
+			textView.addEventListener("ModelChanged", this._listener.onModelChanged); //$NON-NLS-0$
+			textView.addEventListener("Selection", this._listener.onSelection); //$NON-NLS-0$
+			textView.addEventListener("MouseOver", this._listener.onMouseOver); //$NON-NLS-0$
+			textView.addEventListener("MouseOut", this._listener.onMouseOut); //$NON-NLS-0$
+			textView.addEventListener("MouseMove", this._listener.onMouseMove); //$NON-NLS-0$
 						
 			// Set up keybindings
 			if (this._keyBindingFactory) {
@@ -509,8 +524,8 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 			}
 			
 			// Set keybindings for keys that apply to different modes
-			textView.setKeyBinding(new mKeyBinding.KeyBinding(27), "Cancel Current Mode");
-			textView.setAction("Cancel Current Mode", function() {
+			textView.setKeyBinding(new mKeyBinding.KeyBinding(27), "cancelMode"); //$NON-NLS-0$
+			textView.setAction("cancelMode", function() { //$NON-NLS-0$
 				// loop through all modes in case multiple modes are active.  Keep track of whether we processed the key.
 				var keyUsed = false;
 				for (var i=0; i<this._keyModes.length; i++) {
@@ -519,9 +534,9 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 					}
 				}
 				return keyUsed;
-			}.bind(this));
+			}.bind(this), {name: messages.cancelMode});
 
-			textView.setAction("lineUp", function() {
+			textView.setAction("lineUp", function() { //$NON-NLS-0$
 				for (var i=0; i<this._keyModes.length; i++) {
 					if (this._keyModes[i].isActive()) {
 						return this._keyModes[i].lineUp();
@@ -529,7 +544,7 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 				}
 				return false;
 			}.bind(this));
-			textView.setAction("lineDown", function() {
+			textView.setAction("lineDown", function() { //$NON-NLS-0$
 				for (var i=0; i<this._keyModes.length; i++) {
 					if (this._keyModes[i].isActive()) {
 						return this._keyModes[i].lineDown();
@@ -538,7 +553,7 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 				return false;
 			}.bind(this));
 
-			textView.setAction("enter", function() {
+			textView.setAction("enter", function() { //$NON-NLS-0$
 				for (var i=0; i<this._keyModes.length; i++) {
 					if (this._keyModes[i].isActive()) {
 						return this._keyModes[i].enter();
@@ -546,63 +561,152 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 				}
 				return false;
 			}.bind(this));
-						
-			// Create rulers
+
+			var addRemoveBookmark = function(lineIndex, e) {
+				if (lineIndex === undefined) { return; }
+				if (lineIndex === -1) { return; }
+				var view = this.getView();
+				var viewModel = view.getModel();
+				var annotationModel = this.getAnnotationModel();
+				var lineStart = editor.mapOffset(viewModel.getLineStart(lineIndex));
+				var lineEnd = editor.mapOffset(viewModel.getLineEnd(lineIndex));
+				var annotations = annotationModel.getAnnotations(lineStart, lineEnd);
+				var bookmark = null;
+				while (annotations.hasNext()) {
+					var annotation = annotations.next();
+					if (annotation.type === mAnnotations.AnnotationType.ANNOTATION_BOOKMARK) {
+						bookmark = annotation;
+						break;
+					}
+				}
+				if (bookmark) {
+					annotationModel.removeAnnotation(bookmark);
+				} else {
+					bookmark = mAnnotations.AnnotationType.createAnnotation(mAnnotations.AnnotationType.ANNOTATION_BOOKMARK, lineStart, lineEnd);
+					bookmark.title = undefined;
+					annotationModel.addAnnotation(bookmark);
+				}
+			};
+
+			// Create rulers, annotation model and styler
 			if (this._annotationFactory) {
 				var textModel = textView.getModel();
 				if (textModel.getBaseModel) { textModel = textModel.getBaseModel(); }
 				this._annotationModel = this._annotationFactory.createAnnotationModel(textModel);
-				var annotations = this._annotationFactory.createAnnotationRulers(this._annotationModel);
-				this._annotationRuler = annotations.annotationRuler;
-			
-				this._annotationRuler.onClick = function(lineIndex, e) {
-					if (lineIndex === undefined) { return; }
-					if (lineIndex === -1) { return; }
-					var viewModel = textView.getModel();
-					var annotationModel = this.getAnnotationModel();
-					var lineStart = editor.mapOffset(viewModel.getLineStart(lineIndex));
-					var lineEnd = editor.mapOffset(viewModel.getLineEnd(lineIndex));
-					var annotations = annotationModel.getAnnotations(lineStart, lineEnd);
-					var annotation = annotations.next();
-					if (annotation) {
-						var model = editor.getModel();
-						editor.onGotoLine(model.getLineAtOffset(lineStart), annotation.start - lineStart, annotation.end - lineStart);
+				if (this._annotationModel) {
+					var styler = this._annotationStyler = this._annotationFactory.createAnnotationStyler(textView, this._annotationModel);
+					if (styler) {
+						styler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_CURRENT_SEARCH);
+						styler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_MATCHING_SEARCH);
+						styler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_ERROR);
+						styler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_WARNING);
+						styler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_MATCHING_BRACKET);
+						styler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_CURRENT_BRACKET);
+						styler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_CURRENT_LINE);
+						styler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_READ_OCCURRENCE);
+						styler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_WRITE_OCCURRENCE);
+						styler.addAnnotationType(HIGHLIGHT_ERROR_ANNOTATION);
 					}
-				};
+				}
 				
-				this._overviewRuler = annotations.overviewRuler;
-				this._overviewRuler.onClick = function(lineIndex, e) {
-					if (lineIndex === undefined) { return; }
-					var offset = textView.getModel().getLineStart(lineIndex);
-					editor.moveSelection(editor.mapOffset(offset));
-				};
-			
-				this._annotationRuler.setMultiAnnotationOverlay({html: "<div class='annotationHTML overlay'></div>"});
-				this._annotationRuler.addAnnotationType(this.errorType);
-				this._annotationRuler.addAnnotationType(this.warningType);
-				this._annotationRuler.addAnnotationType(this.taskType);
-				this._overviewRuler.addAnnotationType(this.errorType);
-				this._overviewRuler.addAnnotationType(this.warningType);
-				this._overviewRuler.addAnnotationType(this.taskType);
-				this._overviewRuler.addAnnotationType(this.matchingBracketType);
-				this._overviewRuler.addAnnotationType(this.currentBracketType);
-				this._overviewRuler.addAnnotationType(this.currentLineType);
-				textView.addRuler(this._annotationRuler);
-				textView.addRuler(this._overviewRuler);
+				/*
+				* TODO - UndoStack relies on this line to ensure that collapsed regions are expanded 
+				* when the undo operation happens to those regions. This line needs to be remove when the
+				* UndoStack is fixed.
+				*/
+				textView.annotationModel = this._annotationModel;
+					
+				var rulers = this._annotationFactory.createAnnotationRulers(this._annotationModel);
+				var ruler = this._annotationRuler = rulers.annotationRuler;
+				if (ruler) {
+					ruler.onClick = function(lineIndex, e) {
+						if (lineIndex === undefined) { return; }
+						if (lineIndex === -1) { return; }
+						var view = this.getView();
+						var viewModel = view.getModel();
+						var annotationModel = this.getAnnotationModel();
+						var lineStart = editor.mapOffset(viewModel.getLineStart(lineIndex));
+						var lineEnd = editor.mapOffset(viewModel.getLineEnd(lineIndex));
+						var annotations = annotationModel.getAnnotations(lineStart, lineEnd);
+						while (annotations.hasNext()) {
+							var annotation = annotations.next();
+							if (!this.isAnnotationTypeVisible(annotation.type)) { continue; }
+							var model = editor.getModel();
+							editor.onGotoLine(model.getLineAtOffset(lineStart), annotation.start - lineStart, annotation.end - lineStart);
+							break;
+						}
+					};
+					ruler.onDblClick = addRemoveBookmark;
+					ruler.setMultiAnnotationOverlay({html: "<div class='annotationHTML overlay'></div>"}); //$NON-NLS-0$
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_ERROR);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_WARNING);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_TASK);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_BOOKMARK);
+				}
+				this.setAnnotationRulerVisible(true);
+					
+				ruler = this._overviewRuler = rulers.overviewRuler;
+				if (ruler) {
+					ruler.onClick = function(lineIndex, e) {
+						if (lineIndex === undefined) { return; }
+						var offset = textView.getModel().getLineStart(lineIndex);
+						editor.moveSelection(editor.mapOffset(offset));
+					};
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_CURRENT_SEARCH);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_MATCHING_SEARCH);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_ERROR);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_WARNING);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_TASK);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_BOOKMARK);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_MATCHING_BRACKET);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_CURRENT_BRACKET);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_CURRENT_LINE);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_READ_OCCURRENCE);
+					ruler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_WRITE_OCCURRENCE);
+				}
+				this.setOverviewRulerVisible(true);
 			}
 			
 			if (this._lineNumberRulerFactory) {
 				this._lineNumberRuler = this._lineNumberRulerFactory.createLineNumberRuler(this._annotationModel);
-				textView.addRuler(this._lineNumberRuler);
+				this._lineNumberRuler.onDblClick = addRemoveBookmark;
+				this.setLineNumberRulerVisible(true);
 			}
 			
-			this._updateFoldingRuler();
+			if (this._foldingRulerFactory) {
+				this._foldingRuler = this._foldingRulerFactory.createFoldingRuler(this._annotationModel);
+				this._foldingRuler.addAnnotationType(mAnnotations.AnnotationType.ANNOTATION_FOLDING);
+				this.setFoldingRulerVisible(false);
+			}
 			
 			var textViewInstalledEvent = {
-				type: "TextViewInstalled",
+				type: "TextViewInstalled", //$NON-NLS-0$
 				textView: textView
 			};
 			this.dispatchEvent(textViewInstalledEvent);
+		},
+		
+		/**
+		 * Destroys the underlying TextView.
+		 */
+		uninstallTextView: function() {
+			var textView = this._textView;
+			if (!textView) { return; }
+			
+			textView.destroy();
+			
+			this._textView = this._undoStack = this._textDND = this._contentAssist = 
+				this._listener = this._annotationModel = this._annotationStyler =
+				this._annotationRuler = this._overviewRuler = this._lineNumberRuler =
+				this._foldingRuler = this._currentLineAnnotation = this._title = null;
+			this._dirty = false;
+			this._keyModes = [];
+			
+			var textViewUninstalledEvent = {
+				type: "TextViewUninstalled", //$NON-NLS-0$
+				textView: textView
+			};
+			this.dispatchEvent(textViewUninstalledEvent);
 		},
 		
 		_updateCursorStatus: function() {
@@ -618,7 +722,7 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 					return;
 				}
 			}
-			this.reportStatus("Line " + (lineIndex + 1) + " : Col " + (offsetInLine + 1));
+			this.reportStatus(util.formatMessage(messages.lineColumn, lineIndex + 1, offsetInLine + 1));
 		},
 		
 		showProblems: function(problems) {
@@ -631,7 +735,7 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 			var annotations = annotationModel.getAnnotations(0, model.getCharCount()), annotation;
 			while (annotations.hasNext()) {
 				annotation = annotations.next();
-				if (annotation.type === this.errorType || annotation.type === this.warningType) {
+				if (annotation.type === mAnnotations.AnnotationType.ANNOTATION_ERROR || annotation.type === mAnnotations.AnnotationType.ANNOTATION_WARNING) {
 					remove.push(annotation);
 				}
 			}
@@ -640,21 +744,46 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 					var problem = problems[i];
 					if (problem) {
 						// escaping voodoo... we need to construct HTML that contains valid JavaScript.
-						// TODO safeText() from util.js
-						var escapedDescription = problem.description.replace(/'/g, "&#39;").replace(/"/g, '&#34;');
+						var escapedDescription = problem.description.replace(/'/g, "&#39;").replace(/"/g, '&#34;'); //$NON-NLS-1$ //$NON-NLS-0$
 						var lineIndex = problem.line - 1;
 						var lineStart = model.getLineStart(lineIndex);
 						var severity = problem.severity;
-						annotation = {
-							type: this[severity + "Type"],
-							start: lineStart + problem.start - 1,
-							end: lineStart + problem.end,
-							title: escapedDescription,
-							html: "<div class='" + "annotationHTML" + " " + severity + "'></div>",
-							style: {styleClass: "annotation" + " " + severity},
-							overviewStyle: {styleClass: "annotationOverview" + " " + severity},
-							rangeStyle: {styleClass: "annotationRange" + " " + severity}
-						};
+						var type = severity === "error" ? mAnnotations.AnnotationType.ANNOTATION_ERROR : mAnnotations.AnnotationType.ANNOTATION_WARNING; //$NON-NLS-0$
+						var start = lineStart + problem.start - 1;
+						var end = lineStart + problem.end;
+						annotation = mAnnotations.AnnotationType.createAnnotation(type, start, end, escapedDescription);
+						add.push(annotation);
+					}
+				}
+			}
+			annotationModel.replaceAnnotations(remove, add);
+		},
+		
+		showOccurrences: function(occurrences) {
+			var annotationModel = this._annotationModel;
+			if (!annotationModel) {
+				return;
+			}
+			var remove = [], add = [];
+			var model = annotationModel.getTextModel();
+			var annotations = annotationModel.getAnnotations(0, model.getCharCount()), annotation;
+			while (annotations.hasNext()) {
+				annotation = annotations.next();
+				if (annotation.type === mAnnotations.AnnotationType.ANNOTATION_READ_OCCURRENCE || annotation.type === mAnnotations.AnnotationType.ANNOTATION_WRITE_OCCURRENCE) {
+					remove.push(annotation);
+				}
+			}
+			if (occurrences) { 
+				for (var i = 0; i < occurrences.length; i++) {
+					var occurrence = occurrences[i];
+					if (occurrence) {
+						var lineIndex = occurrence.line - 1;
+						var lineStart = model.getLineStart(lineIndex);
+						var start = lineStart + occurrence.start - 1;
+						var end = lineStart + occurrence.end;
+						var type = occurrence.readAccess === true ? mAnnotations.AnnotationType.ANNOTATION_READ_OCCURRENCE : mAnnotations.AnnotationType.ANNOTATION_WRITE_OCCURRENCE;
+						var description = occurrence.description;
+						annotation = mAnnotations.AnnotationType.createAnnotation(type, start, end, description);
 						add.push(annotation);
 					}
 				}
@@ -672,18 +801,18 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 		 */
 		showSelection: function(start, end, line, offset, length) {
 			// We use typeof because we need to distinguish the number 0 from an undefined or null parameter
-			if (typeof(start) === "number") {
-				if (typeof(end) !== "number") {
+			if (typeof(start) === "number") { //$NON-NLS-0$
+				if (typeof(end) !== "number") { //$NON-NLS-0$
 					end = start;
 				}
 				this.moveSelection(start, end);
-			} else if (typeof(line) === "number") {
+			} else if (typeof(line) === "number") { //$NON-NLS-0$
 				var model = this.getModel();
 				var pos = model.getLineStart(line-1);
-				if (typeof(offset) === "number") {
+				if (typeof(offset) === "number") { //$NON-NLS-0$
 					pos = pos + offset;
 				}
-				if (typeof(length) !== "number") {
+				if (typeof(length) !== "number") { //$NON-NLS-0$
 					length = 0;
 				}
 				this.moveSelection(pos, pos+length);
@@ -711,7 +840,7 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 					} else {
 						if (contents !== null && contents !== undefined) {
 							this._textView.setText(contents);
-							this._textView.getModel().setLineDelimiter("auto");
+							this._textView.getModel().setLineDelimiter("auto"); //$NON-NLS-0$
 							this._highlightCurrentLine(this._textView.getSelection());
 						}
 					}
@@ -721,7 +850,7 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 				}
 			}
 			this.onInputChanged({
-				type: "InputChanged",
+				type: "InputChanged", //$NON-NLS-0$
 				title: title,
 				message: message,
 				contents: contents,
@@ -750,7 +879,7 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 				if (end === undefined) {
 					end = 0;
 				}
-				if (typeof column === "string") {
+				if (typeof column === "string") { //$NON-NLS-0$
 					var index = model.getLine(line).indexOf(column);
 					if (index !== -1) {
 						start = index;
@@ -772,103 +901,95 @@ define("orion/editor/editor", ['orion/textview/keyBinding', 'orion/textview/even
 		 */
 		onDirtyChanged: function(dirtyChangedEvent) {
 			return this.dispatchEvent(dirtyChangedEvent);
-		},
-		
-		getTitle: function() {
-			return this._title;
 		}
 	};
 	mEventTarget.EventTarget.addMixin(Editor.prototype);
 
 	/**
-	 * @name orion.editor.util
-	 * @class Basic helper functions used by <code>orion.editor</code>.
+	 * @class
+	 * @private
+	 * @name orion.editor.Animation
+	 * @description Creates an animation.
+	 * @param {Object} options Options controlling the animation.
+	 * @param {Array} options.curve Array of 2 values giving the start and end points for the animation.
+	 * @param {Number} [options.duration=350] Duration of the animation, in milliseconds.
+	 * @param {Function} [options.easing]
+	 * @param {Function} [options.onAnimate]
+	 * @param {Function} [options.onEnd]
+	 * @param {Number} [options.rate=20] The time between frames, in milliseconds.
 	 */
-	util = {
+	Animation = /** @ignore */ (function() {
+		function Animation(options) {
+			this.options = options;
+		}
 		/**
-		 * @class
-		 * @private
-		 * @name orion.editor.Animation
-		 * @description Creates an animation.
-		 * @param {Object} options Options controlling the animation.
-		 * @param {Array} options.curve Array of 2 values giving the start and end points for the animation.
-		 * @param {Number} [options.duration=350] Duration of the animation, in milliseconds.
-		 * @param {Function} [options.easing]
-		 * @param {Function} [options.onAnimate]
-		 * @param {Function} [options.onEnd]
-		 * @param {Number} [options.rate=20] The time between frames, in milliseconds.
+		 * Plays this animation.
+		 * @methodOf orion.editor.Animation.prototype
+		 * @name play
 		 */
-		Animation: (function() {
-			function Animation(options) {
-				this.options = options;
-			}
-			/**
-			 * Plays this animation.
-			 * @methodOf orion.editor.Animation.prototype
-			 * @name play
-			 */
-			Animation.prototype.play = function() {
-				var duration = (typeof this.options.duration === "number") ? this.options.duration : 350,
-				    rate = (typeof this.options.rate === "number") ? this.options.rate : 20,
-				    easing = this.options.easing || this.defaultEasing,
-				    onAnimate = this.options.onAnimate || function() {},
-				    onEnd = this.options.onEnd || function () {},
-				    start = this.options.curve[0],
-				    end = this.options.curve[1],
-				    range = (end - start);
-				var propertyValue,
-				    interval,
-				    startedAt = -1;
-				
-				function onFrame() {
-					startedAt = (startedAt === -1) ? new Date().getTime() : startedAt;
-					var now = new Date().getTime(),
-					    percentDone = (now - startedAt) / duration;
-					if (percentDone < 1) {
-						var eased = easing(percentDone);
-						propertyValue = start + (eased * range);
-						onAnimate(propertyValue);
-					} else {
-						clearInterval(interval);
-						onEnd();
-					}
+		Animation.prototype.play = function() {
+			var duration = (typeof this.options.duration === "number") ? this.options.duration : 350, //$NON-NLS-0$
+			    rate = (typeof this.options.rate === "number") ? this.options.rate : 20, //$NON-NLS-0$
+			    easing = this.options.easing || this.defaultEasing,
+			    onAnimate = this.options.onAnimate || function() {},
+			    onEnd = this.options.onEnd || function () {},
+			    start = this.options.curve[0],
+			    end = this.options.curve[1],
+			    range = (end - start);
+			var propertyValue,
+			    interval,
+			    startedAt = -1;
+
+			function onFrame() {
+				startedAt = (startedAt === -1) ? new Date().getTime() : startedAt;
+				var now = new Date().getTime(),
+				    percentDone = (now - startedAt) / duration;
+				if (percentDone < 1) {
+					var eased = easing(percentDone);
+					propertyValue = start + (eased * range);
+					onAnimate(propertyValue);
+				} else {
+					clearInterval(interval);
+					onEnd();
 				}
-				interval = setInterval(onFrame, rate);
-			};
-			Animation.prototype.defaultEasing = function(x) {
-				return Math.sin(x * (Math.PI / 2));
-			};
-			return Animation;
-		}()),
-		
-		/**
-		 * @private
-		 * @param context Value to be used as the returned function's <code>this</code> value.
-		 * @param [arg1, arg2, ...] Fixed argument values that will prepend any arguments passed to the returned function when it is invoked.
-		 * @returns {Function} A function that always executes this function in the given <code>context</code>.
-		 */
-		bind: function(context) {
-			var fn = this,
-			    fixed = Array.prototype.slice.call(arguments, 1);
-			if (fixed.length) {
-				return function() {
-					return arguments.length
-						? fn.apply(context, fixed.concat(Array.prototype.slice.call(arguments)))
-						: fn.apply(context, fixed);
-				};
 			}
+			interval = setInterval(onFrame, rate);
+		};
+		Animation.prototype.defaultEasing = function(x) {
+			return Math.sin(x * (Math.PI / 2));
+		};
+		return Animation;
+	}());
+
+	/**
+	 * @private
+	 * @param context Value to be used as the returned function's <code>this</code> value.
+	 * @param [arg1, arg2, ...] Fixed argument values that will prepend any arguments passed to the returned function when it is invoked.
+	 * @returns {Function} A function that always executes this function in the given <code>context</code>.
+	 */
+	function bind(context) {
+		var fn = this,
+		    fixed = Array.prototype.slice.call(arguments, 1);
+		if (fixed.length) {
 			return function() {
-				return arguments.length ? fn.apply(context, arguments) : fn.call(context);
+				return arguments.length
+					? fn.apply(context, fixed.concat(Array.prototype.slice.call(arguments)))
+					: fn.apply(context, fixed);
 			};
 		}
-	};
-	
+		return function() {
+			return arguments.length ? fn.apply(context, arguments) : fn.call(context);
+		};
+	}
+
 	if (!Function.prototype.bind) {
-		Function.prototype.bind = util.bind;
+		Function.prototype.bind = bind;
 	}
 
 	return {
 		Editor: Editor,
-		util: util
+		util: {
+			bind: bind
+		}
 	};
 });

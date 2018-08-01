@@ -1,72 +1,130 @@
 define([
+	"dojo/_base/declare",
+	"dojo/_base/xhr",
+	"dojo/_base/lang",
+	"dojo/topic",
+	"dojo/dom",
 //    "../Workbench",
     "../Runtime",
-    "dijit/Dialog",
+//   "../Theme",
+    "dijit/_WidgetBase",
+    "dijit/_TemplatedMixin",
+    "dijit/_WidgetsInTemplateMixin",
+    "dijit/registry",
+    "davinci/ui/Dialog",
     "dijit/Tree",
+    "dijit/tree/ForestStoreModel",
+    "dojo/data/ItemFileReadStore",
     "dojo/i18n!./nls/workbench",
-    "dojo/i18n!dijit/nls/common"
-], function(/*Workbench,*/ Runtime, Dialog, Tree, workbenchStrings, commonStrings) {
+    "dojo/i18n!dijit/nls/common",
+    "dojo/text!./templates/Preferences.html",
+    "dijit/form/Button"
+], function(
+	declare,
+	xhr,
+	lang,
+	topic,
+	dom,
+	/*Workbench,*/
+	Runtime,
+	/*Theme,*/
+	WidgetBase,
+	TemplatedMixin,
+	WidgetsInTemplateMixin,
+	registry,
+	Dialog,
+	Tree,
+	ForestStoreModel,
+	ItemFileReadStore,
+	workbenchStrings,
+	commonStrings,
+	templateString
+) {
 
+
+var DIALOG_WIDTH = 650;
+var DIALOG_HEIGHT = 350;
+
+var PreferencesWidget = declare([WidgetBase, TemplatedMixin, WidgetsInTemplateMixin], {
+
+	templateString: templateString,
+
+	commonStrings: commonStrings,
+
+	resize: function() {
+		this.borderContainer.resize();
+	}
+});
+	
 var Preferences = {
 	_allPrefs: {},
 
 	savePreferences: function(id, base, preferences){
-		dojo.xhrPut({
-			url: "cmd/setPreferences?id="+id + "&base=" + escape(base),
-			putData: dojo.toJson(preferences),
-			handleAs:"json",
-			sync:true,
-			contentType:"text/html"
-		});	
-		
-		if(!Preferences._allPrefs[base])
-			Preferences._allPrefs[base] = {};
-		
-		Preferences._allPrefs[base][id]=preferences;
-		
-		dojo.publish("/davinci/preferencesChanged",[{id:id, preferences:preferences}]);
+		xhr.put({
+			url: "cmd/setPreferences?id="+id + "&base=" + encodeURIComponent(base),
+			putData: JSON.stringify(preferences),
+			handleAs: "json",
+			contentType: "text/html"
+		}).then(function() {
+			if(!Preferences._allPrefs[base]) {
+				Preferences._allPrefs[base] = {};			
+			}
+			
+			Preferences._allPrefs[base][id] = preferences;
+			
+			topic.publish("/davinci/preferencesChanged", {id: id, preferences: preferences});
+		});
 	},
+
 	_loadExtensions: function (){
 		 if(!Preferences._extensions) { Preferences._extensions=Runtime.getExtensions("davinci.preferences"); }
 	},
 	
 	showPreferencePage: function(){
 		Preferences._loadExtensions();
-		var langObj = workbenchStrings;
-		var dijitLangObj = commonStrings;
-	    var prefJson = Preferences.getPrefJson();
- 	    if(!prefJson || prefJson.length < 1) {
- 	    	alert(langObj.noUserPref);
- 	    	return;
- 	    	
- 	    }
- 	    //FIXME: move template to html file and reference with dojo/text! dependency
-    	var html_template = "<div dojoType='dijit.layout.BorderContainer' style='width: 700px; height: 500px;' gutters='false' liveSplitters='true' id='preferencesContainer'>"+
-		    "<div dojoType='dijit.layout.ContentPane' id='pref.TreePane' splitter='true' region='leading' style='width: 200px;' minSize='100' maxSize='300'></div>"+
-		    "<div dojoType='dijit.layout.ContentPane' region='bottom' style='height: 25px'>"+
-			"<button dojoType=dijit.form.Button type=\"button\" onclick=\"davinci.workbench.Preferences.save();\">"+dijitLangObj.buttonSave+"</button></td>"+
-			/*
-			 * FIXME: we don't have logic to yet implement restoreDefaults() yet. See #627
-			 "<button dojoType=dijit.form.Button type=\"button\" onclick=\"davinci.workbench.Preferences.restoreDefaults();\">"+langObj.restoreDefaults+"</button></td>"+
-			*/
-			"<button dojoType=dijit.form.Button type=\"button\" onclick=\"davinci.workbench.Preferences.finish();\">"+dijitLangObj.buttonCancel+"</button></td>"+
-			"</div>"+
-		    "<div dojoType='dijit.layout.ContentPane' region='center' id='pref.RightPane'></div>"+
-		 "</div>";
+		var prefJson = Preferences.getPrefJson();
 
-		var	dialog = new Dialog({
-			id: "preference.main.dialog",
-			title: langObj.preferences,
-			content: html_template,
-			onCancel:function(){
-				this.destroyRecursive(false);
+		//FIXME: Temporary hack to hide project preferences
+		//Can't just delete them because other parts of the code query for a particular preference
+		//Instead, just make it so that project preferences don't appear in preferences dialog
+		//Issue https://github.com/maqetta/maqetta/issues/3658 is reminder to restore project preferences
+		if(prefJson.items){
+			for(var i=prefJson.items.length-1; i>=0; i--){
+				var item = prefJson.items[i];
+				if(item.hide){
+					prefJson.items.splice(i,1);
+				}
 			}
-		});	
+		}
 
-		var itemStore = new dojo.data.ItemFileReadStore({data:prefJson, jsId: "prefTreeDataStore"});	
-		var forestModel = new dijit.tree.ForestStoreModel({jsId:"fileModel",labelAttr: "name", store:itemStore}) ;
+		if(!prefJson || prefJson.length < 1) {
+			alert(workbenchStrings.noUserPref);
+			return;
+		}
+
+		this.dialog = Dialog.showModal(new PreferencesWidget({}), workbenchStrings.preferences,
+				{width: DIALOG_WIDTH, height: DIALOG_HEIGHT});
+
+		var itemStore = new ItemFileReadStore({data: prefJson, jsId: "prefTreeDataStore"});	
+		var forestModel = new ForestStoreModel({
+			jsId: "fileModel",
+			labelAttr: "name",
+			store: itemStore,
+			rootId: 'root'
+		});
 		
-		var dojoTree = dijit.byId("prefTree");
+		// save "path" for first pane
+		var path = ['root'];
+		var items = prefJson.items;
+		if (items) {
+			do {
+				var item = items[0];
+				path.push(item.id);
+				items = item.children;
+			} while (items);
+		}
+
+		var dojoTree = registry.byId("prefTree");
 		if(!dojoTree) {
 			dojoTree = new Tree({
 				model: forestModel, 
@@ -76,19 +134,31 @@ var Preferences = {
 				label: "Preferences", 
 				labelAttr: "name", 
 				showRoot: false,
-				childrenAttrs: "children"
+				childrenAttrs: "children",
+				openOnClick: true,
+				autoExpand: true
 			});
 		}
 		dojoTree.onClick = function(node) { Preferences.setPaneContent(node); };
-		dojo.byId("pref.TreePane").appendChild(dojoTree.domNode);
+		dom.byId("pref.TreePane").appendChild(dojoTree.domNode);
 		dojoTree.startup();
-		dialog.show();
+
+		// auto-select first pane
+		dojoTree.onLoadDeferred.then(function() {
+			dojoTree.set('paths', [path]).then(function() {
+				dojoTree.focusNode(dojoTree.selectedNode);
+				Preferences.setPaneContent(dojoTree.selectedItem);
+			});
+		});
 	},
+
 	getPrefJson: function(){
 		//build the proper json structure before returning it.  this is to save a lot of time over riding model methods for the tree.
 		var ejson = Preferences._extensions;
-		
-		if(ejson==null) return [];
+		if (!ejson) {
+			return [];
+		}
+
 		var flatNodeTree = [];
 		for(var i = 0;i<ejson.length;i++){
 			ejson[i]._index=i;
@@ -111,17 +181,23 @@ var Preferences = {
 			return {
 				id: node.id,
 				name: node.name,
+				hide: node.hide,
 				index: node._index,
 				children: Preferences._getPrefJsonChildren(node.id, flatNodeTree)
 			};
 		});
 		
-		return {items: treeJson};
+		return {
+			identifier: 'id',
+			items: treeJson
+		};
 	},
 	
 	_getPrefJsonChildren: function(catId, valuesArray){
 		var children = valuesArray[catId];
-		if(!children) return [];
+		if (!children) {
+			return [];
+		}
 		var freechildren = []; // FIXME: use map
 		for(var p = 0;p<children.length;p++){
 			freechildren[p] = {
@@ -139,15 +215,15 @@ var Preferences = {
 	setPaneContent: function(node){
 		var domNode;
 		delete Preferences._currentPane;
-		var extension= Preferences._extensions[node.index[0]];
-		var prefs=Preferences.getPreferences(extension.id, davinci.Workbench.getProject());
+		var extension = Preferences._extensions[node.index[0]];
+		var prefs = Preferences.getPreferences(extension.id, davinci.Workbench.getProject());
 		if (extension.pane){
 			require([extension.pane], function(cls) {
 				var pane=new cls();
 				Preferences._currentPane=pane;
 				Preferences._currentPane._extension=extension;
 				Preferences._currentPane.setPreferences(prefs);
-				dijit.byId("pref.RightPane").setContent(pane.domNode);
+				registry.byId("pref.RightPane").setContent(pane.domNode);
 			});
 		}
 		else if (extension.pageContent){
@@ -157,7 +233,7 @@ var Preferences = {
 			domNode=document.createTextNode("");
 		}
 		if (domNode) {
-			dijit.byId("pref.RightPane").setContent( domNode );
+			registry.byId("pref.RightPane").setContent( domNode );
 		}
 	},
 	
@@ -193,7 +269,8 @@ var Preferences = {
 	finish: function (){
 		Preferences._extensions=null;
 		Preferences._currentPane=null;
-		dijit.byId('preference.main.dialog').destroyRecursive(false);
+		this.dialog.destroyRecursive(false);
+		this.dialog = null;
 	},
 	
 	getPreferences: function (id, base){
@@ -217,20 +294,21 @@ var Preferences = {
 		return Preferences._allPrefs[base][id];
 	},
 	
+	
 	getDefaultPreferences: function(id){
 		Preferences._loadExtensions();
 		for(var i =0;i<Preferences._extensions.length;i++){
 			if(Preferences._extensions[i].id==id){
-			    if (dojo.isString(Preferences._extensions[i].defaultValues)){
-			    	var prefs= Runtime.serverJSONRequest({
+				if (typeof Preferences._extensions[i].defaultValues === 'string'){
+					var prefs= Runtime.serverJSONRequest({
 						   url:Preferences._extensions[i].defaultValues, handleAs:"json", sync:true  });
-			    	return prefs.defaultValues;
-			    }
+					return prefs.defaultValues;
+				}
 				return Preferences._extensions[i].defaultValues;
 			}
 		}
 	}
 	
 };
-return dojo.setObject("davinci.workbench.Preferences", Preferences);
+return lang.setObject("davinci.workbench.Preferences", Preferences);
 });

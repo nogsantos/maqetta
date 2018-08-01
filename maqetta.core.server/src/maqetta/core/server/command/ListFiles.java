@@ -13,8 +13,12 @@ import org.maqetta.server.IVResource;
 
 public class ListFiles extends Command {
     public void handleCommand(HttpServletRequest req, HttpServletResponse resp, IUser user) throws IOException {
-        String path = req.getParameter("path");
+    	// SECURITY, VALIDATION
+    	//   'path': checked by User.listFiles()
+
+    	String path = req.getParameter("path");
         IVResource[] listDir = user.listFiles(path);
         this.responseString = Resource.vRsourcesToJson(listDir, false);
+        resp.setContentType("application/json;charset=UTF-8");
     }
 }

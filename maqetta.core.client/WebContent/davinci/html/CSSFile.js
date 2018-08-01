@@ -1,25 +1,34 @@
+define([
+	"dojo/_base/declare",
+	"dojo/_base/lang",
+	"davinci/html/CSSElement",
+	"davinci/html/CSSRule",
+	"davinci/html/CSSSelector",
+	"system/resource"
+], function(
+	declare,
+	lang,
+	CSSElement,
+	CSSRule,
+	CSSSelector,
+	systemResource
+) {
+
 /**
  * @class davinci.html.CSSFile
  * @constructor
  * @extends davinci.html.CSSElement
  */
-define([
-	"dojo/_base/declare",
-	"davinci/html/CSSElement",
-	"davinci/html/CSSRule",
-	"davinci/html/CSSSelector"
-], function(declare, CSSElement, CSSRule, CSSSelector) {
-
 return declare("davinci.html.CSSFile", CSSElement, {
 
 	constructor: function(args) {
 		this.elementType = "CSSFile";
-		dojo.mixin(this, args);
+		lang.mixin(this, args);
 		if (!this.options) { 
 			this.options = {
-					xmode : 'style',
-					css : true,
-					expandShorthand : false
+				xmode: 'style',
+				css: true,
+				expandShorthand: false
 			};
 		}
 		var txt = null;
@@ -27,9 +36,12 @@ return declare("davinci.html.CSSFile", CSSElement, {
 		if (this.url && this.loader) {
 			txt = this.loader(this.url);
 		} else if (this.url) {
-			var file = this.getResource();
-			if (file)
-				txt = file.getText();
+			systemResource.findResourceAsync(this.url).then(function(file) {
+				file.getContent().then(function(txt) {
+					this.setText(txt);					
+				}.bind(this));
+				this.setDirty(file.isDirty());
+			}.bind(this));
 		}
 		if (txt) {
 			this.setText(txt);
@@ -37,30 +49,24 @@ return declare("davinci.html.CSSFile", CSSElement, {
 	}, 
 
 	save: function(isWorkingCopy) {
-		var deferred;
-		var file = this.getResource();
-		if (file) {
-			var text = this.getText();
-			deferred = file.setContents(text, isWorkingCopy);
-		}
-		return deferred;
+		return systemResource.findResourceAsync(this.url).then(function (file) {
+			return file.setContents(this.getText(), isWorkingCopy);
+		}.bind(this));
 	},
 
 	close: function() {
 		this.visit({
-			visit : function(node) {
+			visit: function(node) {
 				if (node.elementType == "CSSImport") {
 					node.close();
 				}
 			}
 		});
+		// the return of the CSSFile model needs to happen in the CSSImport instead of the CSSFile
+		// if we return it in the CSSFile close we end up returning it twice due of the visit logic
 		require(["dojo/_base/connect"], function(connect) {
 			connect.publish("davinci/model/closeModel", [this]);
 		});
-	},
-
-	getResource: function (isWorkingCopy) {
-		return system.resource.findResource(this.url);
 	},
 
 	addRule: function (ruleText) {
@@ -75,17 +81,20 @@ return declare("davinci.html.CSSFile", CSSElement, {
 		var oldChildren = this.children;
 		this.children = [];
 		var result = require("davinci/html/CSSParser").parse(text, this);
+		if (result.errors.length > 0){
+			console.log("ERROR: " + this.url);
+		}
 		this.errors = result.errors;
 
 		if (this.errors.length > 0 && this.errors[this.errors.length - 1].isException)  {
 			this.children = oldChildren;
 		}
 		if (this.includeImports) {
-			for ( var i = 0; i < this.children.length; i++ ) {
-				if (this.children[i].elementType == 'CSSImport') {
-					this.children[i].load();
-				}
-			}
+			this.children.forEach(function(child) {
+				if (child.elementType == 'CSSImport') {
+					child.load();
+				}				
+			});
 		}
 		this.onChange();
 	}, 
@@ -93,11 +102,10 @@ return declare("davinci.html.CSSFile", CSSElement, {
 	getText: function(context) {
 		context = context || {};
 		context.indent = 0;
-		var s = "";
-		for ( var i = 0; i < this.children.length; i++ ) {
-			s = s + this.children[i].getText(context);
-		}
-		return s;
+
+		return this.children.map(function(child) {
+			return child.getText(context);
+		}).join("");
 	},
 
 	getCSSFile: function() {
@@ -109,7 +117,6 @@ return declare("davinci.html.CSSFile", CSSElement, {
 	},
 
 	getMatchingRules: function(domElement, rules, matchLevels) {
-
 		domElement = this._convertNode(domElement);
 		rules = rules || [];
 		matchLevels = matchLevels || [];
@@ -118,16 +125,27 @@ return declare("davinci.html.CSSFile", CSSElement, {
 			if (child.elementType == 'CSSRule') {
 				var level = child.matches(domElement);
 				if (level) {
+					var added = false;
 					for ( var j = 0; j < matchLevels.length; j++ ) {
+						/*
+						 * Run the rules and add the rule based on it's match level 0 - NNN
+						 * 
+						 */
 						if (level >= matchLevels[j]) {
 							rules.splice(j, 0, child);
 							matchLevels.splice(j, 0, level);
+							added = true;
 							break;
 						}
 					}
-					if (rules.length == 0) {
-						rules.push(child);
-						matchLevels.push(level);
+					/*
+					 * The rule is a match but either we have no rules in the array
+					 * or all the rules already in the array have a higer match level than this one
+					 * So add at the front
+					 */
+					if (!added) {
+						rules.splice(0, 0, child);
+						matchLevels.splice(0, 0, level);
 					}
 				}
 			} else if (child.elementType == 'CSSImport' && child.cssFile) {
@@ -160,7 +178,7 @@ return declare("davinci.html.CSSFile", CSSElement, {
 
 	getRules: function(selector) {
 		var selectors = CSSSelector.parseSelectors(selector);
-		var matchingRules = new Array();
+		var matchingRules = [];
 		for ( var i = 0; i < this.children.length; i++ ) {
 			var child = this.children[i];
 			if (child.elementType == 'CSSRule') {
@@ -197,14 +215,13 @@ return declare("davinci.html.CSSFile", CSSElement, {
 			return property;
 		}
 
-		if (dojo.isString(propertyNames))
-			return getMatchingProperty(propertyNames);
-		var result = [];
-		for ( var i = 0; i < propertyNames.length; i++ ) {
-			result.push(getMatchingProperty(propertyNames[i]));
+		if (typeof propertyNames == "string") {
+			propertyNames = [propertyNames];
 		}
-		return result;
 
+		return propertyNames.map(function(name) {
+			return getMatchingProperty(name);
+		});
 	}
 
 });

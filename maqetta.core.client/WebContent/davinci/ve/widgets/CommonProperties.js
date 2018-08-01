@@ -53,7 +53,6 @@ define(["dojo/_base/declare",
 				this.context = null;
 				this._clearValues();
 			}
-			this._clearValues();
 		},	
 		
 		startup: function(){
@@ -103,9 +102,16 @@ define(["dojo/_base/declare",
 			}	
 		},
 		
-		_widgetReplaced: function(newWidget){
-			this._widget = newWidget;
-			this.onWidgetSelectionChange();
+		_widgetReplaced: function(newWidget, oldWidget){
+			/* Check to see that this is for the same widget
+			 * Some widget like Tree update the DataStore but not the widget it's self from smart input
+			 * 
+			 */
+			
+			if (this._widget === oldWidget){
+				this._widget = newWidget;
+				this.onWidgetSelectionChange();
+			}
 		},
 		
 		onWidgetSelectionChange: function(){
@@ -121,7 +127,9 @@ define(["dojo/_base/declare",
 		
 		_clearValues: function(){
 			for(name in this._boxes){
-				dojo.attr(this._boxes[name].domNode,'value',"")
+				if(this._boxes[name].domNode){
+					dojo.attr(this._boxes[name].domNode,'value',"")
+				}
 				this._boxes[name].value = null;
 			}
 		},

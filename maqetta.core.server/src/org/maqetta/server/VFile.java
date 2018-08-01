@@ -2,9 +2,6 @@ package org.maqetta.server;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -13,6 +10,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Hashtable;
 
@@ -42,7 +40,16 @@ public class VFile implements IVResource {
 
         this.parent = parent;
     }
-
+    public boolean hasSource(){
+    	return false;
+    }
+    public boolean isSource(){
+    	return parent!=null && this.parent.isSource();
+    }
+    
+    public IVResource getSource(){
+    	return this;
+    }
     public VFile(IStorage file, IVResource parent) {
         this(file, parent, "");
         /*
@@ -101,7 +108,7 @@ public class VFile implements IVResource {
      * public String getPath() { if(this.virtualPath== null) return null;
      * if(this.parent==null) return ".";
      * 
-     * String cleanPath = this.parent.getPath() + IVResource.SEPERATOR +
+     * String cleanPath = this.parent.getPath() + IVResource.SEPARATOR +
      * this.virtualPath;
      * 
      * if(cleanPath.length() > 0 && cleanPath.charAt(0)=='.'){ cleanPath =
@@ -125,7 +132,7 @@ public class VFile implements IVResource {
 
     }
 
-    private boolean deleteDirectory(IStorage path) {
+    private boolean deleteDirectory(IStorage path) throws IOException {
         if (path.exists()) {
             IStorage[] files = path.listFiles();
             for (int i = 0; i < files.length; i++) {
@@ -136,11 +143,10 @@ public class VFile implements IVResource {
                 }
             }
         }
-        return (path.delete());
-
+        return path.delete();
     }
 
-    public boolean delete() {
+    public boolean delete() throws IOException {
         IStorage target = null;
 
         if (this.workingCopy.exists()) {
@@ -214,36 +220,54 @@ public class VFile implements IVResource {
         return this.file.toURI();
     }
 
-    public boolean mkdir() {
+    public boolean mkdir() throws IOException {
         return this.file.mkdirs();
-
     }
 
-    public IVResource[] find(String path) {
+    protected static boolean wildCardMatch(String text, String pattern){
+        // Create the cards by splitting using a RegEx. If more speed 
+        // is desired, a simpler character based splitting can be done.
+        String [] cards = pattern.split("\\*");
+
+        // Iterate over the cards.
+        for(String card:cards){
+            int idx = text.indexOf(card);
+            /* this checks if the card is in the proper position.  
+             * for searches like *.theme, *.theme.bak would be a false match so
+             * you have to test if there's any more cards left after the match
+             * to gobble up the rest (with a * or some text)
+             * 
+             */
+            if(idx + card.length() < text.length() && card.length()>0) return false;
+            
+            // Card not detected in the text.
+            if(idx == -1)
+            {
+                return false;
+            }
+            
+            // Move ahead, towards the right of the text.
+            text = text.substring(idx + card.length());
+        }
+        
+        return true;
+    }
+    public IVResource[] find(String pattern) {
         if (!this.isDirectory()) {
-            return null;
+            if(wildCardMatch(this.getName(), pattern))
+            	return new IVResource[]{this};
+            return new IVResource[0];
         }
-
-        IPath a = new Path(this.file.getAbsolutePath()).append(path);
-        IStorage f1 = this.file.newInstance(a.toOSString());
-
-        if (!f1.exists()) {
-            return null;
-        }
-        String[] segments = a.segments();
-        IPath me = new Path(this.file.getAbsolutePath());
-        IVResource parent = this;
-        for (int i = me.matchingFirstSegments(a); i < segments.length; i++) {
-            int segsToEnd = segments.length - i - 1;
-            String s = a.removeLastSegments(segsToEnd).toOSString();
-            IStorage f = file.newInstance(s);
-            parent = new VFile(f, parent, segments[i]);
-        }
-        return new IVResource[] { parent };
+       ArrayList found = new ArrayList();
+       IVResource[] children = this.listFiles();
+       for(int i=0;i<children.length;i++){
+    	   found.addAll(Arrays.asList(children[i].find(pattern)));
+       }
+       return (IVResource[])found.toArray(new IVResource[found.size()]);
 
     }
 
-    public IVResource create(String path) {
+    public IVResource create(String path) throws IOException {
         if (!this.isDirectory()) {
             return null;
         }
@@ -272,7 +296,7 @@ public class VFile implements IVResource {
 		return false;
 	}
 
-    public void flushWorkingCopy() {
+    public void flushWorkingCopy() throws IOException {
         // String name = this.file.getName();
         if (this.workingCopy.exists()) {
             this.file.delete();
@@ -289,7 +313,7 @@ public class VFile implements IVResource {
         // this.workingCopy.delete();
     }
 
-    public void removeWorkingCopy() {
+    public void removeWorkingCopy() throws IOException {
         this.workingCopy.delete();
     }
 
@@ -336,6 +360,6 @@ public class VFile implements IVResource {
 
     public IVResource[] findChildren(String childName) {
         // TODO Auto-generated method stub
-        return null;
+        return this.find(childName);
     }
 }

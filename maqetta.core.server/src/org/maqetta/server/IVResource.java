@@ -11,9 +11,9 @@ import java.net.URLConnection;
 
 public interface IVResource {
 
-    public static final char SEPERATOR = '/';
+//    public static final char SEPARATOR = '/';
 
-    URLConnection openConnection() throws MalformedURLException, IOException;
+    public URLConnection openConnection() throws MalformedURLException, IOException;
 
     public boolean exists();
     
@@ -29,9 +29,9 @@ public interface IVResource {
 
     public void createNewInstance() throws IOException;
 
-    public boolean delete();
+    public boolean delete() throws IOException;
 
-    public IVResource create(String path);
+    public IVResource create(String path) throws IOException;
 
     public OutputStream getOutputStreem() throws FileNotFoundException, IOException;
 
@@ -46,15 +46,15 @@ public interface IVResource {
     /* only working copy no actual saved file */
     public boolean isNew();
 
-    public void removeWorkingCopy();
+    public void removeWorkingCopy() throws IOException;
 
-    public void flushWorkingCopy();
+    public void flushWorkingCopy() throws IOException;
 
     public URI getURI() throws URISyntaxException;
 
     public IVResource[] find(String path);
 
-    public boolean mkdir();
+    public boolean mkdir() throws IOException;
 
     public boolean isDirty();
 
@@ -62,10 +62,16 @@ public interface IVResource {
 
     public IVResource getParent();
 
-    IVResource get(String childName);
+    public boolean hasSource();
+    
+    public boolean isSource();
+	
+    public IVResource getSource();
+    
+    public IVResource get(String childName);
 
     /* search for children, supports wild card */
-    IVResource[] findChildren(String childName);
+    public IVResource[] findChildren(String childName);
 
-    void add(IVResource v);
+    public void add(IVResource v);
 }

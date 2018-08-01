@@ -15,12 +15,17 @@ public class Copy extends Command {
 
     @Override
     public void handleCommand(HttpServletRequest req, HttpServletResponse resp, IUser user) throws IOException {
-        String src = req.getParameter("source");
+    	// SECURITY, VALIDATION
+    	//   'source': checked by User.getResouce()
+    	//   'dest': checked by User.createResource()
+    	//   'recurse': validated by Boolean.parseBoolean()
+
+    	String src = req.getParameter("source");
         String des = req.getParameter("dest");
         boolean recurse = Boolean.parseBoolean(req.getParameter("recurse"));
 
         IVResource source = user.getResource(src);
-        IVResource newResource = user.createResource(des);
+        IVResource newResource = user.createResource(des, source.isDirectory());
 
         if (source.isDirectory()) {
             newResource.mkdir();

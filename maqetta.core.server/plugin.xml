@@ -9,27 +9,11 @@
    	<extension-point id="welcomePage" name="Welcome page provider" schema="schema/welcomePage.exsd"/>
    <extension-point id="mainPage" name="Welcome page provider" schema="schema/reviewPage.exsd"/>
    <extension-point id="previewPage" name="Preview page provider" schema="schema/previewPage.exsd"/>
-   <extension-point id="mailConfig" name="Mail Server Configuration" schema="schema/mailConfig.exsd"/>
-   <!-- <extension-point id="libraryManager" name="Library Manager" schema="schema/libraryManager.exsd"/>-->
    <extension-point id="userManager" name="User Manager" schema="schema/userManager.exsd"/>
    <extension-point id="libraryManager" name="User Manager" schema="schema/libraryManager.exsd"/>
    <extension-point id="libraryFinder" name="Library Finder" schema="schema/libraryFinder.exsd"/>
    
-   <extension point="org.eclipse.equinox.http.registry.httpcontexts">
-      <httpcontext id="maqetta.core.server.httpcontext"/>
-   </extension>
-   
-   
-   <extension point="org.eclipse.equinox.http.registry.servlets">
-      <servlet
-      		
-            alias="/maqetta/cmd"
-            class="org.maqetta.server.DavinciCommandServlet"
-            load-on-startup="true">
-      </servlet>
-   </extension>
-
-   <extension  id="maqettaLib"  point="org.eclipse.equinox.http.registry.resources">
+   <extension  id="maqettaLib"  point="org.eclipse.equinox.http.registry.resources"  >
 	
 	        <!-- maqetta core libraries metadata (maqetta.js and states.js) -->
 	        
@@ -38,16 +22,25 @@
 	              base-name="/WebContent/project"
 	              />
 	 </extension>
+	 <!-- maqetta samples library -->
 	 <extension point="maqetta.core.server.ajaxLibrary">
-		 <ajaxLibrary name="maqetta" id="maqetta" version="0.3">
-		      <libraryPath location="WebContent/project/base" name="/"></libraryPath>
+		 <ajaxLibrary name="samples" id="maqettaSamples" version="1.0" required="true">
+		      <libraryPath location="WebContent/project/samples" name="/samples"></libraryPath>
 		      <metadata location="app/metadata/maqetta/core/0.3" />
 		 </ajaxLibrary>
 	 </extension>
+	 
+	 <!-- maqetta main library (app.js and app.css)-->
+	 
+	 <extension point="maqetta.core.server.ajaxLibrary">
+		 <ajaxLibrary name="maqetta" id="maqetta" version="0.3" required="true">
+		      <libraryPath location="WebContent/project/maqetta" name="/lib/maqetta"></libraryPath>
+		      <metadata location="app/metadata/maqetta/core/0.3" />
+		 </ajaxLibrary>
+	 </extension>
+	 
 	 <extension point="maqetta.core.server.initialUserFiles">
-
-             <initalUserFile path="WebContent/samples/"/>
-              
+             <initalUserFile path="WebContent/project/InitialContentReadWrite"/>
       </extension>
 	 
 </plugin>

@@ -1,18 +1,19 @@
 define([
 	"dojo/_base/declare",
-	"davinci/workbench/ViewPart",
-	"davinci/Workbench",
-	"davinci/ui/widgets/ToggleTree",
+	"./ViewPart",
+	"../Workbench",
+	"../ui/widgets/OutlineTree",
 	"dijit/layout/ContentPane",
-	"dojo/i18n!davinci/workbench/nls/workbench"
-], function(declare, ViewPart, Workbench, ToggleTree, ContentPane, workbenchStrings){
+	"dojo/i18n!./nls/workbench"
+], function(declare, ViewPart, Workbench, OutlineTree, ContentPane, workbenchStrings){
 
-return declare("davinci.workbench.OutlineView", ViewPart, {
+return declare(ViewPart, {
 
 	constructor: function(params, srcNodeRef){
 		this.subscribe("/davinci/ui/editorSelected", this.editorChanged);
-		this.subscribe("/davinci/ui/selectionChanged", this.selectionChanged);
-		this.subscribe("/davinci/ui/modelChanged", this.modelChanged);
+		//this.subscribe("/davinci/ui/selectionChanged", this.selectionChanged);
+		//this.subscribe("/davinci/ui/modelChanged", this.modelChanged);
+		this.subscribe("/davinci/ui/context/pagerebuilt", this._pageRebuilt);
 	},
 	
 	editorChanged: function(changeEvent){
@@ -44,10 +45,11 @@ return declare("davinci.workbench.OutlineView", ViewPart, {
 		if (this.outlineProvider) {
 			this.outlineProvider._outlineView = this;
 			
-			if (this.outlineProvider.toolbarID) {
+			/*if (this.outlineProvider.toolbarID) {
 				this.toolbarID=this.outlineProvider.toolbarID;
 				this._createToolbar();
-			}
+			}*/
+
 			this.createTree();
 		} else {
 			this.containerNode.innerHTML = workbenchStrings.outlineNotAvailable;
@@ -55,60 +57,43 @@ return declare("davinci.workbench.OutlineView", ViewPart, {
 	},
 
 	createTree: function() {
-		if (this.outlineTree) 
+		if (this.outlineTree) {
 			this.removeContent();
-
-		iconFunction = this.outlineProvider.getIconClass && dojo.hitch(this.outlineProvider,this.outlineProvider.getIconClass);
-		if (this.outlineProvider.getModel) {
-			this.outlineModel = this.outlineProvider.getModel(this.currentEditor);
-		} else {
-			if (this.outlineProvider.getStore) {
-				this.modelStore = this.outlineProvider.getStore();
-			} else {
-				console.log("FIXME: davinci.ui.ModelStore no longer exists");
-				/*
-				this.modelStore = new davinci.ui.ModelStore( {
-					model: editor.model
-				});
-				*/
-			}
-			if (this.outlineProvider.getLabel) {
-				this.modelStore.getLabel = dojo.hitch(this, function(item) {
-					return this.outlineProvider.getLabel(item);
-				});
-			}
-
-			if (this.outlineProvider.getChildren) {
-				this.modelStore.getValues = dojo.hitch(this, function(item, attribute) {
-					return this.outlineProvider.getChildren(item);
-				});
-			}
-
-			this.outlineModel = new dijit.tree.TreeStoreModel( {
-				store : this.modelStore,
-				rootId : 'test.js',
-				rootLabel : 'test.js',
-				childrenAttrs : [ "children" ]
-			});
 		}
-		this.outlineTree = new ToggleTree({
-			showRoot: this.outlineModel.showRoot,
-			dndController: this.outlineModel.dndController,
-			betweenThreshold: this.outlineModel.betweenThreshold, 
-			checkItemAcceptance: this.outlineModel.checkItemAcceptance, 
-			model: this.outlineModel,
-			getIconClass: iconFunction || ToggleTree.prototype.getIconClass,
-			isMultiSelect: true 
-		});
-		
-		this.outlineTree.notifySelect=dojo.hitch(this, function (item, ctrlKeyPressed) {
-			this.publish("/davinci/ui/selectionChanged", [[{model:item, add:ctrlKeyPressed}], this.currentEditor]);
-		});
 
-//		editor.addSelectionListener(function (selection){
-//			if (selection.model)
-//				outlineTree.selectNode(selection.model);
-//		});
+		if (this.popup) {
+			this.popup.destroyRecursive();
+		}
+                       
+		if (this.outlineProvider && this.outlineProvider.getModel) {
+			this.outlineModel = this.outlineProvider.getModel(this.currentEditor);
+		}
+
+		// create tree
+		var treeArgs = {
+			model: this.outlineModel,
+			showRoot: this.outlineModel.showRoot,
+			betweenThreshold: this.outlineModel.betweenThreshold,
+			checkItemAcceptance: this.outlineModel.checkItemAcceptance,
+			isMultiSelect: true,
+			persist: false
+		};
+
+		if (this.outlineProvider.getIconClass) {
+			treeArgs.getIconClass = this.outlineProvider.getIconClass;
+		}
+
+		if (this.currentEditor.getContext) {
+			treeArgs.context = this.currentEditor.getContext()
+		}
+
+		// #2256 - dijit tree cannot have a null dndController
+		if (this.outlineModel.dndController) {
+			treeArgs.dndController = this.outlineModel.dndController;
+		}
+
+		this.outlineTree = new OutlineTree(treeArgs); 
+
 		// BEGIN TEMPORARY HACK for bug 5277: Surround tree with content pane and subcontainer div overflow: auto set to workaround spurious dnd events.
 		// Workaround should be removed after the following dojo bug is fixed: http://bugs.dojotoolkit.org/ticket/10585
 		this.container = new ContentPane({style:"padding:0"});
@@ -117,20 +102,21 @@ return declare("davinci.workbench.OutlineView", ViewPart, {
 		this.subcontainer.appendChild(this.outlineTree.domNode);
 		this.container.domNode.appendChild(this.subcontainer);
 		this.setContent(this.container);
+		this.attachToolbar();
 		// END HACK: Original code commented out below:
-		// this.setContent(this.outlineTree);
+
 		this.outlineTree.startup();
-		
+
 		if (this.outlineProvider) {
-			this.outlineProvider._tree=this.outlineTree;
+			this.outlineProvider._tree = this.outlineTree;
 		}
-		
+
 		var outlineActionsID = (this.outlineProvider.getActionsID && this.outlineProvider.getActionsID()) || 'davinci.ui.outline';
 
-		Workbench.createPopup({
+		this.popup = Workbench.createPopup({
 			partID: outlineActionsID,
 			domNode: this.outlineTree.domNode,
-			openCallback: this.outlineTree.getMenuOpenCallback()
+		  openCallback: this.outlineTree.getMenuOpenCallback ? this.outlineTree.getMenuOpenCallback() : null
 		});
 	},
 
@@ -144,13 +130,21 @@ return declare("davinci.workbench.OutlineView", ViewPart, {
 			this.outlineTree.selectNode([selection[0].model]);
 		}
 	},
+
+	_pageRebuilt: function() {
+		if (this.outlineTree) {
+			var paths = this.outlineTree.get("paths");
+			this.createTree();
+			this.outlineTree.set("paths", paths);
+		}
+	},
 	
 	modelChanged: function(modelChanges) {
 		if (this.outlineModel && this.outlineModel.refresh) {
 			this.outlineModel.refresh();
 		} else if (this.outlineProvider&&this.outlineProvider.getStore) {
 			this.outlineModel.store=this.outlineProvider.getStore();
-			this.outlineModel.onChange(this.outlineProvider._rootItem );
+			this.outlineModel.onChange(this.outlineProvider._rootItem);
 		}
 	}
 });

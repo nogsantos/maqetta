@@ -2,202 +2,63 @@ define([
     "dojo/_base/declare",
     "../model/Path",
     "../model/Factory",
-	"./utils/URLRewrite"
-], function(declare, Path, Factory, URLRewrite) {
+	"./utils/URLRewrite",
+	"./commands/ModifyRuleCommand",
+	"./commands/StyleCommand",
+	"dojo/i18n!davinci/ve/nls/common",
+	"system/resource"	
+], function(declare, Path, Factory, URLRewrite, ModifyRuleCommand, StyleCommand, commonNls, systemResource) {
 
 return declare("davinci.ve.ThemeModifier", null, {
 
-	
 	_getCssFiles: function(){
-		
 		if(this.cssFiles) {
 			return this.cssFiles;
 		}
 		
 		this.cssFiles = [];
 		
-		for(var i = 0;i<this.themeCssfiles.length;i++){
-			var cssURL = this._themePath.getParentPath().append(this.themeCssfiles[i]).toString();
-			this.cssFiles.push(Factory.getModel({
-				url: cssURL,
-			    includeImports: true,
-			    loader: function(url){
-					return system.resource.findResource(url).getText();
-				}
-			}));
+		if(this.themeCssFiles){
+			var parentPath = this._themePath.getParentPath();
+			this.cssFiles = this.themeCssFiles.map(function(themeCssFile) {
+				return Factory.getModel({
+					url: parentPath.append(themeCssFile).toString(),
+				    includeImports: true,
+				});
+			});
 		}
 		return this.cssFiles;
 	},
-	
 
 	_getThemeResource: function (fileName) {
 		var absoluteLocation = this._themePath.getParentPath().append(fileName).toString();
-		var resource=  system.resource.findResource(absoluteLocation);
-		return resource;
-	},
-	
-	_hotModifyCssRule: function(rules){
-		function updateSheet(sheet, rule){
-			var fileName = rule.parent.relativeURL || rule.parent.url;
-			var selectorText = rule.getSelectorText();
-			selectorText = selectorText.replace(/^\s+|\s+$/g,""); // trim white space
-			//selectorText = selectorText.replace( /\s/g, "" ); //remove all whitespace
-			var intIndexOfMatch = selectorText.indexOf("  ");
-			while (intIndexOfMatch != -1){ // keep only one space between words
-				selectorText = selectorText.replace( "  ", " " );
-				intIndexOfMatch = selectorText.indexOf( "  " );
-			}
-			var rules = sheet.cssRules;
-			var foundSheet;
-			foundSheet = findSheet(sheet, fileName);
-			if (foundSheet){
-				var rules = foundSheet.cssRules;
-				for (var r = 0; r < rules.length; r++){
-					if (rules[r] instanceof CSSStyleRule){
-						var ruleSelectorText = rules[r].selectorText;
-						//ruleSelectorText = ruleSelectorText.replace( /\s/g, "" ); //remove all whitespace
-						ruleSelectorText = ruleSelectorText.replace(/^\s+|\s+$/g,""); // trim white space
-						var intIndexOfMatch = ruleSelectorText.indexOf("  ");
-						while (intIndexOfMatch != -1){ // keep only one space between words
-							ruleSelectorText = ruleSelectorText.replace( "  ", " " );
-							intIndexOfMatch = ruleSelectorText.indexOf( "  " );
-						}
-						//console.log('rule text ' +rules[r].selectorText);
-						//console.log('selector text ' + selectorText);
-						if (/*rules[r].selectorText*/ ruleSelectorText == selectorText) {
-							var text = rule.getText({noComments:true});
-							foundSheet.deleteRule(r);
-							foundSheet.insertRule(text, r);
-							
-							return true;
-						}
-					}
-				}
-			}
-			return false;
-		}
-		
-		function findSheet(sheet, sheetName){
-			if (sheet.href == sheetName){
-				return sheet;
-			}
-			var foundSheet;
-			var rules = sheet.cssRules;
-			for (var r = 0; r < rules.length; r++){
-				if (rules[r] instanceof CSSImportRule){
-					if (rules[r].href == sheetName) {
-						foundSheet = rules[r].styleSheet;
-						//break;
-					} else { // it might have imports
-						foundSheet = findSheet(rules[r].styleSheet, sheetName);
-					}
-					if (foundSheet){
-						break;
-					}
-				}
-			}
-			return foundSheet;
-		}
-		
-		for (var r = 0; r < rules.length; r++){
-			var rule = rules[r];
-			var document = this.getContext().getDocument();
-			var sheets = document.styleSheets; 
-			for (var i=0; i < sheets.length; i++){
-				if (updateSheet(sheets[i],rule)){
-					break;
-				}
-			}
-		}
+		return system.resource.findResource(absoluteLocation);
 	},
 
-	getOldValues: function (rules, values){
-
-		function oldValuesAddIfNewValue(propName, propValue){
-			for(k=0;k<oldValues.length;k++){
-				if(oldValues[k][propName] === propValue){
-					return;
+	/*
+	 *  Added for theme Delta #23
+	 */
+	getDeltaRule: function(rule){
+		var targetRule=null;
+		var targetCssFile=this.cssFiles[0]; // by default use first file null;
+		var ruleSelectorText = rule.getSelectorText();
+		this.cssFiles.forEach(function(file){
+			// if this rule is not from the delta file add a new rule to the delta
+			var cssRules = file.getRules(ruleSelectorText);
+			if (cssRules.length > 0) {
+				// found CSS rules so set the target file
+				targetCssFile = file;
+			}
+			cssRules.forEach(function(r){
+				if (r.parent.url == file.url) { // is it in delta file
+					targetRule = r; // found the deltaRule
 				}
-			}
-			var o = {};
-			o[a] = propValue; // x.value;
-			oldValues.push(o);
+			}.bind(this));
+		}.bind(this));
+		if (!targetRule && targetCssFile) {
+			targetRule = targetCssFile.addRule(ruleSelectorText+" {}");
 		}
-		var oldValues = new Array();
-		for (var r = 0; r < rules.length; r++){
-			var rule = rules[r];
-			var rebasedValues; 
-            if (values.length < 1) {
-                rebasedValues = [];
-                rebasedValues[0] = dojo.clone(values);;
-            } else {
-                rebasedValues = dojo.clone(values);
-            }
-			rebasedValues = this._rebaseCssRuleImagesFromStylePalette(rule, rebasedValues);
-			
-			for(var i=0;i<rebasedValues.length;i++){
-				for(var a in rebasedValues[i]){
-					var propDeclarations = rule.getProperties(a);
-					if(this._theme.isPropertyVaildForWidgetRule(rule,a,this._selectedWidget) /*&& propDeclarations.length > 0*/){
-					    if (propDeclarations.length > 0) {
-    						for(var p=0; p<propDeclarations.length; p++){
-    							var x = propDeclarations[p];
-   								oldValuesAddIfNewValue(a, x.value);
-      						}
-					    }else{
-					        // this actually remove an existing property?
-                            oldValuesAddIfNewValue(a, "");  
-					    }
-					}
-				}
-			}
-		}
-		return oldValues;
-	},
-
-	_modifyTheme: function (rules, values) {
-
-		if (!values) {
-		    return;
-		}
-	    var unset = dojo.clone(values);
-		
-		for (var r = 0; r < rules.length; r++){
-			var rule = rules[r];
-			var file = rule.searchUp( "CSSFile");
-			var rebasedValues; // = dojo.clone(values);
-			if (values.length < 1) {
-			    rebasedValues = [];
-			    rebasedValues[0] = dojo.clone(values);;
-			} else {
-			    rebasedValues = dojo.clone(values);
-			}
-			var rebasedValues = this._rebaseCssRuleImagesFromStylePalette(rule, rebasedValues);
-			var propertiesAlreadyProcessed = {};
-			
-			for(var i=0;i<rebasedValues.length;i++){
-				for(var a in rebasedValues[i]){
-					var propDeclarations = rule.getProperties(a);
-					if(this._theme.isPropertyVaildForWidgetRule(rule,a,this._selectedWidget) /*&& rebasedValues[i][a]*/){
-						if(!propertiesAlreadyProcessed[a]){
-							var context = this.visualEditor.context;
-							// Process all property declarations for given property
-							var allPropValues = [];
-							for(var i2=0;i2<rebasedValues.length;i2++){
-								//if(rebasedValues[i2][a]){
-									var o = {};
-									o[a] = rebasedValues[i2][a];
-									allPropValues.push(o)
-								//}   
-							}
-							context.modifyRule(rule, allPropValues);
-							this._markDirty(file.url);
-							propertiesAlreadyProcessed[a] = true;
-						}
-					}
-				}
-			}
-		}
+		return targetRule;
 	},
 
 	_markDirty: function (file,cssModelObject){
@@ -209,26 +70,163 @@ return declare("davinci.ve.ThemeModifier", null, {
 		this._srcChanged();
 	},	
 
-	_rebaseCssRuleImagesFromStylePalette: function(rule, values){ // the style palete assumes the basedir for images user/. where css in relation to the file.
-		//debugger;
-		if (!rule) {
-			return values;
-		}
-
-		var basePath = new Path(rule.parent.url);
+	
+	/**
+	 * Causes property changes on the currently selected widget.
+	 * Right now, only operates on the first widget in the selection.
+	 * Creates and executes an appropriate StyleCommand for the operation.
+	 * @param {object} value
+	 *		value.appliesTo {string|object} - either 'inline' or a CSSRule object
+	 *		applyToWhichStates - controls whether style change is attached to Normal or other states:
+	 *			"current" => apply to currently active state
+	 *			[...array of strings...] => apply to these states (may not yet be implemented)
+	 *			any other value (null/undefined/"Normal"/etc) => apply to Normal state
+	 *		values [object]  Array of property values. Each item in array is an object with one property
+	 *						<propname>:<propvalue>, where <propname> is name of styling property and <propvalue> is value string
+	 */
+	getCommandForStyleChange: function (value){
+		/*if(!this.isActiveEditor() ){
+			return;
+		}*/
 		
-		for(var i=0;i<values.length;i++){
-			for(var a in values[i]){
-				var str = values[i][a];
-				if (URLRewrite.containsUrl(str)) {
-					var url = URLRewrite.getUrl(str);
-					var path = new Path(url);
-					var newUrl=path.relativeTo(basePath, true).toString(); // ignore the filename to get the correct path to the image
-					values[i][a]="url('"+ newUrl + "')";
+		var context = this,
+			selection = context.getSelection(),
+			widget = selection.length ? selection[selection.length - 1] : undefined;
+
+		if(selection.length > 1){
+			context.select(widget);
+		}
+		var command;
+		
+		if(value.appliesTo=="inline"){
+			var allValues = [];
+			/* rewrite any URLs found */
+			
+			var filePath = new Path(this.fileName);
+			
+			for(var i=0;i<value.values.length;i++){
+				for(var name in value.values[i]){
+					if(URLRewrite.containsUrl(value.values[i][name]) && !URLRewrite.isAbsolute(value.values[i][name])){
+						
+						var oldUrl = new Path(URLRewrite.getUrl(value.values[i][name]));
+						if(!oldUrl.isAbsolute){
+							//FIXME: newUrl/newValue never used?
+							var newUrl = oldUrl.relativeTo(filePath).toString();
+							var newValue = URLRewrite.replaceUrl(value.values[i][name], newUrl);
+							allValues.push(a);
+						}else{
+							var a ={};
+							a[name] = value.values[i][name];
+						
+							allValues.push(a); //FIXME: combine with below
+						}
+					}else{
+						var a ={};
+						a[name] = value.values[i][name];
+						allValues.push(a);
+					}
 				}
 			}
+			command = new StyleCommand(widget, allValues, value.applyToWhichStates);	
+		}else{
+			var rule;
+			
+			// if type=="proposal", the user has chosen a proposed new style rule
+			// that has not yet been added to the given css file (right now, app.css)
+			if(value.appliesTo.type=="proposal"){
+
+				//FIXME: Not included in Undo logic
+				var cssFile = context.model.find({elementType:'CSSFile', relativeURL: value.appliesTo.targetFile}, true);
+				if(!cssFile && context.cssFiles){
+					// #23 look in dynamic files
+					for (var i = 0; context.cssFiles.length; i++){
+						if (context.cssFiles[i].url === value.appliesTo.targetFile) {
+							cssFile = context.cssFiles[i];
+							break;
+						}
+					}
+					// #23 
+					if (!cssFile) {
+						console.log("Cascade._changeValue: can't find targetFile");
+						return;
+					}
+				}
+				rule = cssFile.addRule(value.appliesTo.ruleString+" {}");
+			}else{
+				rule = value.appliesTo.rule;
+			}
+			
+			/* update the rule */
+			command = new ModifyRuleCommand(rule, value.values, context);
 		}
-		return values;
-	}
+		return command;
+	},
+	
+	saveDynamicCssFiles: function(cssFiles, isAutoSave){
+		var promises = [],
+			visitor = { visit: function(node){
+				if(node.elementType == "CSSFile" && node.isDirty()){
+					promises.push(node.save(isAutoSave).then(function(result){
+						// only remove the working copy if the save was a success 
+						if (!isAutoSave){
+							systemResource.findResource(node.url).removeWorkingCopy();
+						}
+						node.dirtyResource = isAutoSave;
+						return node;
+					},
+					function(error){
+						console.error(dojo.string.substitute(commonNls.errorSavingFile, [node.url, error]));
+						return error;
+					}));
+				}
+				return false;
+			}
+		};
+			
+		if (cssFiles) {
+			cssFiles.forEach(function(file){
+				file.visit(visitor);
+			});
+		}
+
+		return promises;
+	},
+	
+	dirtyDynamicCssFiles: function(cssFiles){
+		
+		var dirty = false;
+		var visitor = {
+				visit: function(node){
+					if(node.elementType=="CSSFile" && node.isDirty()){
+						dirty = true;
+					}
+					return dirty;
+				}
+			};
+			
+		if (cssFiles) {
+			cssFiles.forEach(function(file){
+				if(dirty){
+					return dirty;
+				}
+				file.visit(visitor);
+			});
+		}
+		return dirty;
+	},
+	
+	close: function() {		
+		if (this.cssFiles) {
+			this.cssFiles.forEach(function(file){
+				file.close();
+				require("davinci/model/Factory").closeModel(file);  // return the model to the factory
+			}.bind(this));
+		}
+		delete this.cssFiles;
+	},
+	
+	destroy: function () {
+		this.close();
+	}	
 });
 });

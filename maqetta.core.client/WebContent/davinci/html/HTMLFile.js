@@ -11,13 +11,15 @@ define([
 	"davinci/html/HTMLElement",
 	"davinci/html/CSSImport",
 	"davinci/html/CSSFile",
-	"davinci/model/Model"
-], function(declare, HTMLItem, HTMLParser, CSSSelector, HTMLElement, CSSImport, CSSFile, Model) {
+	"davinci/model/Model",
+	"davinci/model/Path"
+], function(declare, HTMLItem, HTMLParser, CSSSelector, HTMLElement, CSSImport, CSSFile, Model, Path) {
 
 return declare("davinci.html.HTMLFile", HTMLItem, {
 
 	constructor: function(fileName) {
 		this.fileName = fileName;
+		this.url = fileName;
 		this.elementType = "HTMLFile";
 		this._loadedCSS = {};
 		this._styleElem = null;
@@ -123,6 +125,12 @@ return declare("davinci.html.HTMLFile", HTMLItem, {
 	},
 
 	setText: function (text, noImport) {
+		// clear the singletons in the Factory
+		this.visit({visit:function(node) {
+			if (node.elementType == "CSSImport") {
+				node.close();
+			}
+		}});
 		// clear cached values
 		this.children = [];
 		this._styleElem = null;
@@ -167,6 +175,10 @@ return declare("davinci.html.HTMLFile", HTMLItem, {
 	},
 
 	addStyleSheet: function(url, content, dontLoad, beforeChild, loader) {
+		var path = new Path(this.url || this.fileName);
+		path = path.getParentPath().append(url);
+		var absUrl = path.toString();
+		
 		// create CSS File model
 		
 		/* 
@@ -175,14 +187,15 @@ return declare("davinci.html.HTMLFile", HTMLItem, {
 		 * 
 		 */
 		if (!dontLoad) {
-			this._loadedCSS[url] = new CSSFile({
-				url : url,
+			// have to use the require or we get a circular dependency 
+			this._loadedCSS[absUrl] = require("davinci/model/Factory").getModel({
+				url : absUrl,
 				includeImports : true,
 				loader : loader
 			});
 		}
 		if (content) {
-			this._loadedCSS[url].setText(content);
+			this._loadedCSS[absUrl].setText(content);
 		}
 
 		this.onChange();
@@ -224,6 +237,7 @@ return declare("davinci.html.HTMLFile", HTMLItem, {
 				node.close();
 			}
 		}});
+		require("davinci/model/Factory").closeModel(this);
 	},
 
 	getLabel: function() {

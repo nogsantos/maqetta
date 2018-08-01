@@ -8,23 +8,21 @@ define([
 	"dijit/MenuItem",
 	"dijit/form/Button",
 	"dijit/form/DropDownButton",
-	"dojo/i18n!./nls/widgets"
+	"dojo/i18n!./nls/widgets",
+	"davinci/Runtime",
+	"dojo/text!./templates/CommentForm.html"
 ], function(declare, _Widget, _Templated, TextBox, SimpleTextarea, Menu, MenuItem, 
-		Button, DropDownButton, widgetsNls) {
-	
+		Button, DropDownButton, widgetsNls, Runtime, templateString) {
+
 return declare("davinci.review.widgets.CommentForm", [_Widget, _Templated], {
 
-	templateString: dojo.cache("davinci", "review/widgets/templates/CommentForm.html"),
+	templateString: templateString,
 
-	postMixInProperties : function() {
+	postMixInProperties: function() {
 		this.inherited(arguments);
-		/*
-		 * HACK: dijit pulls template substitutions from 'this'. copy values out of NLS
-		 * lang object into properties on this object. hope they don't collide.
-		 */
+
+		// add to 'this' for template substitutions
 		this.comment = widgetsNls.comment;
-		this.typeLabel = widgetsNls.typeLabel;
-		this.severityLevel = widgetsNls.severityLevel;
 		this.buttonCancel = widgetsNls.buttonCancel;
 	},
 
@@ -38,14 +36,12 @@ return declare("davinci.review.widgets.CommentForm", [_Widget, _Templated], {
 			style: "width: 100%; margin: 2px 0px 2px 0px;font-family:Verdana, Arial, Helvetica, sans-serif;font-size:100%;"
 		}, dojo.create("div"));
 		this.contentNode.appendChild(this.content.domNode);
-		this._constructCommentTypes();
-		this._constructSeverities();
-		var submitButton = new Button({
+		new Button({
 			label: widgetsNls.submit, 
 			onClick: dojo.hitch(this, "_submit")
 		}, this.submitNode);
 
-		this.replyTo = 0;
+		this.replyTo = "root";
 		this.connect(this.cancelNode, "click", "hide");
 		this.connect(this.content, "onFocus", "hidePlaceHolder");
 		this.connect(this.content, "onBlur", "showPlaceHolder");
@@ -56,13 +52,33 @@ return declare("davinci.review.widgets.CommentForm", [_Widget, _Templated], {
 
 		var viewActions=this._getActions();
 		var tb=dojo.create("span", {style: {display: "inline-block"}},this.toolbarNode);
-		var toolbar = davinci.Workbench._createToolBar("xx", tb, viewActions,this);
+		var toolbar = this._toolbar = davinci.Workbench._createToolBar('toolbarPath', tb, viewActions, this);
 		dojo.style(toolbar.domNode,{"display":"inline-block"});
+		
+		//Subscribe to changes to the selection state of shapes in the review editor
+		dojo.subscribe("/davinci/review/drawing/selectshape", this, function(selectedShape, surface) {
+			this._updateToolbarEnablement();
+		}.bind(this));
+		
+		dojo.subscribe("/davinci/review/drawing/deselectshape", this, function(selectedShape, surface) {
+			this._updateToolbarEnablement();
+		}.bind(this));
+	},
+	
+	_updateToolbarEnablement: function() {
+		var toolbarChildren = this._toolbar.getChildren();
+		dojo.forEach(toolbarChildren, function(child) {
+			var childAction = child._maqAction;
+			if (childAction && childAction.action && childAction.action.isEnabled) {
+				var enabled = childAction.action.isEnabled();
+				child.set("disabled", !enabled);
+			}
+		});
 	},
 
 	_getActions: function() {
-		var editorActions=[];
-		var extensions = davinci.Runtime.getExtensions('davinci.annotationActions', function(ext) {
+		var editorActions = [];
+		Runtime.getExtensions("davinci.annotationActions", function(ext) {
 			editorActions.push(ext.editorContribution);
 			return true;
 		});
@@ -87,6 +103,9 @@ return declare("davinci.review.widgets.CommentForm", [_Widget, _Templated], {
 		dojo.style(this.domNode, "display", "block");
 		dojo.window.scrollIntoView(this.domNode);
 		dojo.publish("/davinci/review/view/openComment", []);
+		
+		//Initialize toolbar enablement
+		this._updateToolbarEnablement();
 	},
 
 	onShow: function() {
@@ -95,16 +114,12 @@ return declare("davinci.review.widgets.CommentForm", [_Widget, _Templated], {
 
 	_submit: function() {
 		var subject = this.subject.get("value"),
-		content = this.content.get("value").replace(/\n/g, "<br/>"),
-		type = dojo.byId(this.type.id + "_label" ).innerHTML,
-		severity = this.severity.get("label"),
+		content = this.content.get("value"),
 		func = this._update ? "onUpdate" : "onSubmit";
 
 		this[func]({
 			subject: subject,
-			content: content,
-			type: type,
-			severity: severity
+			content: content
 		});
 
 	},
@@ -117,100 +132,13 @@ return declare("davinci.review.widgets.CommentForm", [_Widget, _Templated], {
 		// Placeholder to be connected
 	},
 
-	/**
-	 * Generate a drop down button for comment types.
-	 */
-	_constructCommentTypes : function() {
-		var typeList = new Menu();
-		this.type = new DropDownButton({
-			label: widgetsNls.unassigned,
-			iconClass: "dijitEditorIcon emptyIcon",	//Here use an empty icon, the generated DropDownButton will align automatically.
-			dropDown : typeList
-		}, this.commentType);
-
-		typeList.addChild(new MenuItem({ 
-			label : widgetsNls.unassigned,
-			onClick: dojo.hitch( this, "setTypeButtonLabel", "Unassigned" )
-		}));
-
-		typeList.addChild(new MenuItem({ 
-			label : widgetsNls.requirement,
-			onClick: dojo.hitch( this, "setTypeButtonLabel", "Requirement" )
-		}));
-		typeList.addChild(new MenuItem({ 
-			label : widgetsNls.task,
-			onClick: dojo.hitch( this, "setTypeButtonLabel", "Task" )
-		}));
-		typeList.addChild( new MenuItem({ 
-			label : widgetsNls.defect,
-			onClick: dojo.hitch( this, "setTypeButtonLabel", "Defect" )
-		}));
-
-
-		if(!dojo.hasClass(this.type.domNode.parentNode, "commentTheme")){
-			dojo.addClass(this.type.domNode.parentNode, "commentTheme");
-		}
-	},
-
-	/**
-	 * Generate a drop down button for comment severity(High, Low, Medium).
-	 */
-	_constructSeverities : function() {
-		var severityList = new Menu();
-
-		this.severity = new DropDownButton({
-			label: widgetsNls.unassigned,
-			iconClass: "dijitEditorIcon severityUnassigned",
-			dropDown : severityList
-		}, this.commentSeverity);
-
-		severityList.addChild(new MenuItem({
-			label: widgetsNls.unassigned,
-			iconClass: "dijitEditorIcon severityUnassigned",
-			onClick: dojo.hitch( this, "setSeverityButtonLabel", "Unassigned" )
-		}));
-
-		severityList.addChild(new MenuItem({
-			label: widgetsNls.low,
-			iconClass: "dijitEditorIcon severityLow",
-			onClick: dojo.hitch( this, "setSeverityButtonLabel", "Low" )
-		}));
-
-		severityList.addChild(new MenuItem({
-			label: widgetsNls.medium,
-			iconClass: "dijitEditorIcon severityMedium",
-			onClick: dojo.hitch( this, "setSeverityButtonLabel", "Medium" )
-		}));
-
-		severityList.addChild(new MenuItem({
-			label: widgetsNls.high,
-			iconClass: "dijitEditorIcon severityHigh",
-			onClick: dojo.hitch( this, "setSeverityButtonLabel", "High" )
-		}));
-
-		// Add this class to override the Claro theme.
-		if (!dojo.hasClass( this.severity.domNode.parentNode, "commentTheme" )) {
-			dojo.addClass( this.severity.domNode.parentNode, "commentTheme" );
-		}
-	},
-
-	setSeverityButtonLabel: function(severity) {
-		this.severity.set("label", severity);
-		dojo.removeClass(this.severity.iconNode, "severityUnassigned severityLow severityMedium severityHigh emptyIcon" );
-		dojo.addClass(this.severity.iconNode, "severity" + severity);
-	},
-
-	setTypeButtonLabel: function(type) {
-		this.type.set("label", type);
-	},
-
 	reset: function() {
 		dojo.style(this.subject.domNode, "display", "block");
 		this.placeHolder.innerHTML = widgetsNls.comment;
 		this.showPlaceHolder();
 		this.subject.set("value", "");
 		this.content.set("value", "");
-		this.replyTo = 0;
+		this.replyTo = "root";
 		this.placeAt(this.parentNode, "first");
 		this._update = false;
 		this.isShowing = false;

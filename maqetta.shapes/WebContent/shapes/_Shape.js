@@ -18,8 +18,12 @@ define([
 			this.domNode.style.lineHeight='0px';
 
 			this._header = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" shape-rendering="geometric-precision">';
-			this._header += '<g class="shapeg" pointer-events="auto">';
+			this._header += '<g class="shapeg" pointer-events="all">';
 			this._footer = '</g></svg>';
+			
+			this.subscribe('/maqetta/appstates/state/changed',function(){
+				this.resize();
+			}.bind(this));
 		},
 
 		/*
@@ -42,21 +46,56 @@ define([
 		},
 		
 		startup: function(){
-			if(this.domNode){
-				this.resize();
-				this._bboxStartup = this._bbox;
-			}
-			var that = this;
-			//FIXME: setTimeout hack to address possible timing problem
+			
+			// In some scenarios, there is a possible timing problem
 			//with loading of the shapes.css file, which might not be available
 			//for the first shapes widget added to a document.
-			setTimeout(function(){
-				// In case shape has been deleted before timeout gets triggered
-				if(that.domNode && that.domNode.ownerDocument){
-					that.resize();
-					that._bboxStartup = that._bbox;
+			var shapes_css_check = function(counter){
+				var loaded = true;
+				
+				var checkForShapeCSS  = function(styleSheet){
+					if(styleSheet.href && styleSheet.href.indexOf('shapes.css') >= 0 && styleSheet.cssRules && styleSheet.cssRules.length > 0){
+						this.resize();
+						this._bboxStartup = this._bbox;
+						return true;
+					}
+					return false;
+				}.bind(this);
+				
+				var styleSheets = this.domNode && this.domNode.ownerDocument && this.domNode.ownerDocument.styleSheets;
+				if(!styleSheets){
+					styleSheets = [];
 				}
-			}, 1000);
+				
+				shapeCssLoop:
+				for(var ss=0; ss<styleSheets.length; ss++){
+					var styleSheet = styleSheets[ss];
+					if(loaded = checkForShapeCSS(styleSheet)){
+						break shapeCssLoop;
+					}
+					if(styleSheet.cssRules){
+						for(var r=0; r<styleSheet.cssRules.length; r++){
+							var rule = styleSheet.cssRules[r];
+							if(rule.type == 3 && rule.styleSheet){	// type==3 => @import
+								if(loaded = checkForShapeCSS(rule.styleSheet)){
+									break shapeCssLoop;
+								}
+							}
+						}
+					}
+				}
+				
+				// Try again once every second for up to 10 tries
+				if(!loaded && counter<10){
+					setTimeout(function(counter){
+						shapes_css_check(++counter)
+					}.bind(this, counter), 1000);
+				}
+				
+			}.bind(this);
+			
+			var counter = 0;
+			shapes_css_check(counter);
 		},
 		
 		resize: function(){
@@ -87,12 +126,15 @@ define([
 			var thisbbox = this._bbox;
 			var x=gbbox.x, y=gbbox.y, w=gbbox.width, h=gbbox.height;
 			this._bbox = gbbox;
-			var strokewidth = dojo.style(this.domNode,'stroke-width');
+			if(!this._bboxStartup){
+				this._bboxStartup = this._bbox;
+			}
+			var strokewidth = dojo.style(this.domNode,'strokeWidth');
 			if(strokewidth<1){
 				strokewidth = 1;
 			}
 			this._xoffset = this._yoffset = strokewidth;
-			var double = strokewidth*2;
+			var doubleStrokeWidth = strokewidth*2;
 			
 			/* Have to put a little padding around the SVG because
 			 * no browsers take stroke-width into account when computing box sizes
@@ -100,9 +142,9 @@ define([
 			 * horizontal lines.
 			 */
 			x -= this._xoffset;
-			w += double;
+			w += doubleStrokeWidth;
 			y -= this._yoffset;
-			h += double;
+			h += doubleStrokeWidth;
 			this._svgroot.setAttribute('viewBox',x+' '+y+' '+w+' '+h);
 			this._svgroot.style.width = w+'px';
 			this._svgroot.style.height = h+'px';

@@ -14,35 +14,33 @@ import org.davinci.server.user.UserException;
 import org.maqetta.server.Command;
 import org.maqetta.server.IDavinciServerConstants;
 import org.maqetta.server.ServerManager;
+import org.maqetta.server.Validator;
 
 public class Register extends Command {
 
     @Override
     public void handleCommand(HttpServletRequest req, HttpServletResponse resp, IUser user) throws IOException {
+    	// SECURITY, VALIDATION
+    	//   'userName': checked with Validator.isUserName()
+    	//   'password': N/A
+    	//   'email': checked with Validator.isEmail()
+
         String name = req.getParameter("userName");
-        
-        /* ensure the user name is word characters only to prevent user names like "..\..\xsers.xml" */
-        
-        Pattern validUserPattern = Pattern.compile("^[\\w\\-]([\\.\\w@])+", Pattern.CASE_INSENSITIVE);
-        Matcher matcher = validUserPattern.matcher(name);
-		if(!matcher.matches()){
-			this.responseString = "INVALID USER NAME";
-			return;
-		}
-        
         String password = req.getParameter("password");
         String email = req.getParameter("email");
+        
+        if (!Validator.isUserName(name) || !Validator.isEmail(email)) {
+			this.responseString = "INVALID USER NAME";
+			return;
+        }
 
         try {
-            user = ServerManager.getServerManger().getUserManager().addUser(name, password, email);
+            user = ServerManager.getServerManager().getUserManager().addUser(name, password, email);
             this.responseString = "OK";
             HttpSession session = req.getSession(true);
             session.setAttribute(IDavinciServerConstants.SESSION_USER, user);
-            Cookie k = new Cookie(IDavinciServerConstants.SESSION_USER, user != null ? user.getUserName() : null);
-    		k.setPath("/");
-    		resp.addCookie(k);
         } catch (UserException e) {
-            this.responseString = e.getReason();
+            this.responseString = e.getMessage();
         }
 
     }

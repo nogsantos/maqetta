@@ -1,7 +1,6 @@
 package maqetta.core.server.user;
 
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -24,15 +23,15 @@ import javax.xml.transform.TransformerFactoryConfigurationError;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
-import org.davinci.ajaxLibrary.ILibInfo;
 import org.davinci.server.review.Constants;
 import org.davinci.server.review.ReviewerVersion;
 import org.davinci.server.review.Version;
+import org.davinci.server.review.cache.ReviewCacheManager;
 import org.davinci.server.review.user.IDesignerUser;
 import org.davinci.server.review.user.IReviewManager;
 import org.davinci.server.review.user.Reviewer;
-import org.davinci.server.user.IDavinciProject;
-import org.davinci.server.user.LibrarySettings;
+import org.davinci.server.user.IUser;
+import org.davinci.server.user.UserException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.maqetta.server.IDavinciServerConstants;
@@ -46,51 +45,44 @@ import org.xml.sax.SAXException;
 public class ReviewManager implements IReviewManager {
 //	private static final String LS = System.getProperty("line.separator");
 	private static ReviewManager theReviewManager;
-	private HashMap<IDavinciProject, HashMap<String, ILibInfo[]>> snapshotLibs;
+//	private HashMap<IDavinciProject, HashMap<String, ILibInfo[]>> snapshotLibs;
 	public IStorage baseDirectory;
-
-
 	
 	public static ReviewManager getReviewManager()
 	{
-		if (theReviewManager==null)
+		if (theReviewManager==null) {
 			theReviewManager=new ReviewManager();
+			
+			// Start the ReviewCacheManager thread. This has previously been started in the service
+			// function of DavinciReviewServlet.
+			if ( !ReviewCacheManager.$.isAlive() ) {
+				ReviewCacheManager.$.start();
+			}
+		}
 		return theReviewManager;
 	}
 
-	Map<String, IDesignerUser> users = Collections.synchronizedMap(new HashMap<String, IDesignerUser>());
+	Map<String, IDesignerUser> designerUsers = Collections.synchronizedMap(new HashMap<String, IDesignerUser>());
 	Map<String, Reviewer> reviewers = Collections.synchronizedMap(new HashMap<String, Reviewer>());
 	
 	public ReviewManager() {
-		String basePath = ServerManager.getServerManger().getDavinciProperty(IDavinciServerConstants.BASE_DIRECTORY_PROPERTY);
-		baseDirectory = ServerManager.getServerManger().getBaseDirectory().newInstance(".");
-		if (basePath != null) {
-			IStorage dir = baseDirectory.newInstance(basePath);
-			if (dir.exists())
-				baseDirectory = dir;
-		}
-		if (ServerManager.DEBUG_IO_TO_CONSOLE)
-			System.out.println("\nSetting [user space] to: " + baseDirectory.getAbsolutePath());
+		baseDirectory = ServerManager.getServerManager().getBaseDirectory();
 	}
 
-	public void saveDraft(String name,Version version) {
-		IDesignerUser user = getDesignerUser(name);
+	public void saveDraft(IDesignerUser user, Version version) throws IOException {
 		IStorage commentingDir = user.getCommentingDirectory();
 		if (!commentingDir.exists()) {
 			commentingDir.mkdir();
-			(baseDirectory.newInstance(commentingDir, "snapshot")).mkdir();
-			(baseDirectory.newInstance(commentingDir, "livedoc")).mkdir();
+			(commentingDir.newInstance(commentingDir, "snapshot")).mkdir();
 		}
 		saveVersionFile(user);
 	}
 
-	public void publish(String name, Version version) {
-		IDesignerUser user = getDesignerUser(name);
+	public void publish(IDesignerUser user, Version version) throws IOException {
 		IStorage commentingDir = user.getCommentingDirectory();
 		if (!commentingDir.exists()) {
 			commentingDir.mkdir();
-			(baseDirectory.newInstance(commentingDir, "snapshot")).mkdir();
-			(baseDirectory.newInstance(commentingDir, "livedoc")).mkdir();
+			(commentingDir.newInstance(commentingDir, "snapshot")).mkdir();
 		}
 
 		initVersionDir(user, version.getTime());
@@ -98,24 +90,27 @@ public class ReviewManager implements IReviewManager {
 		
 		//Persist review information
 		this.saveReviewerVersionFiles(version);
+		
+		//Rebuild workspace
+		user.rebuildWorkspace();
 	}
 	
 	/****************************************************/
 	
-	private void saveReviewerVersionFiles(Version version) {
+	private void saveReviewerVersionFiles(Version version) throws IOException {
 		List<Reviewer> reviewers = version.getReviewers();
 		for (Reviewer reviewer : reviewers) {
 			this.saveReviewerVersionFile(reviewer);
 		}
 	}
 	
-	private void saveReviewerVersionFile(Reviewer reviewer) {
+	private void saveReviewerVersionFile(Reviewer reviewer) throws IOException {
 		IStorage versionFile = getReviewerVersionFile(reviewer);
 		ReviewerVersionFile file = new ReviewerVersionFile();
 		file.save(versionFile, reviewer);
 	}
 	
-	private IStorage getReviewerVersionFile(Reviewer reviewer) {
+	private IStorage getReviewerVersionFile(Reviewer reviewer) throws IOException {
 		IStorage versionFile = baseDirectory.newInstance(getReviewerVersionDirectory(), this.buildBaseFileForFromReviewer(reviewer)); 
 		return versionFile;
 	}
@@ -125,7 +120,7 @@ public class ReviewManager implements IReviewManager {
 		return fileName;
 	}
 	
-	private IStorage getReviewerVersionDirectory() {
+	private IStorage getReviewerVersionDirectory() throws IOException {
 		//Init the directory to hold version info for all of the reviewers and return it
 		IStorage reviewerVersionsDirectory = baseDirectory.newInstance(baseDirectory, Constants.REVIEW_DIRECTORY_NAME);
 		if (!reviewerVersionsDirectory.exists()) {
@@ -136,24 +131,28 @@ public class ReviewManager implements IReviewManager {
 	/**************************************************/
 	
 
-	public void saveVersionFile(IDesignerUser user) {
-		IStorage versionFile = baseDirectory.newInstance(user.getCommentingDirectory(), "snapshot/versions.xml");
+	public void saveVersionFile(IDesignerUser user) throws IOException {
+		IStorage commentingDir = user.getCommentingDirectory();
+		IStorage versionFile = commentingDir.newInstance(commentingDir, "snapshot/versions.xml");
 		VersionFile file = new VersionFile();
 		file.save(versionFile, user);
 	}
 
-	private void initVersionDir(IDesignerUser user, String timeStamp) {
-		IStorage versionDir = baseDirectory.newInstance(user.getCommentingDirectory(), "snapshot/" + timeStamp);
-		if(versionDir.exists()) return;
+	private void initVersionDir(IDesignerUser user, String timeStamp) throws IOException {
+		IStorage commentingDir = user.getCommentingDirectory();
+		IStorage versionDir = commentingDir.newInstance(commentingDir, "snapshot/" + timeStamp);
+		if(versionDir.exists()) {
+			return;
+		}
 		versionDir.mkdir();
-		IStorage userDir = user.getUserDirectory();
 
+		IStorage userDir = user.getUserDirectory();
 		IStorage[] files = userDir.listFiles();
 		for (int i = 0; i < files.length; i++) {
 			String path = files[i].getAbsolutePath();
 			if (files[i].isFile()
 					&& path.indexOf(IDavinciServerConstants.WORKING_COPY_EXTENSION) < 0) {
-				IStorage destination = baseDirectory.newInstance(versionDir, files[i].getName());
+				IStorage destination = versionDir.newInstance(files[i].getName());
 				copyFile(files[i], destination);
 			} else if (files[i].isDirectory()
 //					&& path.indexOf(IDavinciServerConstants.SETTINGS_DIRECTORY_NAME) < 0  // Need to copy the settings
@@ -161,66 +160,86 @@ public class ReviewManager implements IReviewManager {
 					&& path.indexOf(Constants.REVIEW_DIRECTORY_NAME) < 0
 					&& path.indexOf(".svn") < 0
 					&& containsPublishedFiles(files[i], user, timeStamp)) {
-				IStorage destination = baseDirectory.newInstance(versionDir, files[i].getName());
+				IStorage destination = versionDir.newInstance(versionDir, files[i].getName());
 				copyDirectory(files[i], destination);
 			}
 		}
 	}
 
-	private void copyDirectory(IStorage sourceDir, IStorage destinationDir) {
+	private void copyDirectory(IStorage sourceDir, IStorage destinationDir) throws IOException {
 		destinationDir.mkdirs();
 		IStorage[] file = sourceDir.listFiles();
 		for (int i = 0; i < file.length; i++) {
 			if (file[i].isFile()) {
-
 				IStorage sourceFile = file[i];
 
-				IStorage targetFile = baseDirectory.newInstance(destinationDir, file[i].getName());
+				IStorage targetFile = destinationDir.newInstance(destinationDir, file[i].getName());
 				copyFile(sourceFile, targetFile);
 			}
+
 			if (file[i].isDirectory()) {
-				IStorage destination = baseDirectory.newInstance(destinationDir, file[i].getName());
+				IStorage destination = destinationDir.newInstance(destinationDir, file[i].getName());
 				copyDirectory(file[i], destination);
 			}
 		}
 	}
 
-	private void copyFile(IStorage source, IStorage destination) {
+	private void copyFile(IStorage source, IStorage destination) throws IOException {
+		InputStream in = null;
+		OutputStream out = null;
 		try {
 			destination.getParentFile().mkdirs();
-			InputStream in = source.getInputStream();
-			OutputStream out = destination.getOutputStream();
+			in = source.getInputStream();
+			out = destination.getOutputStream();
 			byte[] buf = new byte[1024];
 			int len;
 			while ((len = in.read(buf)) > 0) {
 				out.write(buf, 0, len);
 			}
-			in.close();
-			out.close();
-
-		} catch (IOException e) {
-			e.printStackTrace();
-			// throw new UserException(UserException.ERROR_COPYING_USER_BASE_DIRECTORY);
+		} finally {
+			if (in != null) {
+				in.close();
+			}
+			if (out != null) {
+				out.close();
+			}
 		}
 	}
 
-	public IDesignerUser getDesignerUser(String name) {
-		IDesignerUser designer = users.get(name);
+	public IDesignerUser getDesignerUser(IUser user) throws IOException {
+		String name = user.getUserID();
+		IDesignerUser designer = designerUsers.get(name);
 		if (null == designer) {
-			loadUser(name);
+			designer = loadDesignerUser(user);
+			designerUsers.put(name, designer);
 		}else{
-			// Update the workspace information so that the new created project
-			// will be imported.
-			designer.getRawUser().rebuildWorkspace();
+			//Update the raw user
+			designer.setRawUser(user);
 		}
-		return users.get(name);
+		return designer;
 	}
 	
-	public Reviewer getReviewer(String email) {
+	public IDesignerUser getDesignerUser(String name) throws IOException {
+		IDesignerUser designer = designerUsers.get(name);
+		if (designer == null) {
+			IUser user;
+			try {
+				user = ServerManager.getServerManager().getUserManager().getUser(name);
+			} catch (UserException e) {
+				throw new RuntimeException(e);
+			}
+			
+			if(user==null) return null;
+			designer = getDesignerUser(user);
+		}
+		return designer;
+	}
+	
+	public Reviewer getReviewer(String email) throws IOException {
 		return getReviewer(null, email);
 	}
 	
-	public Reviewer getReviewer(String name, String email) {
+	public Reviewer getReviewer(String name, String email) throws IOException {
 		Reviewer reviewer = reviewers.get(email);
 		if (null == reviewer) {
 			reviewer = loadReviewer(name, email);
@@ -228,14 +247,22 @@ public class ReviewManager implements IReviewManager {
 		return reviewer;
 	}
 
-	public Reviewer isVaild(String name, String id, String versionTime) {
-		IDesignerUser user = getDesignerUser(name);
-		if (versionTime == null) {
-			if (user.getLatestVersion() != null)
-				versionTime = user.getLatestVersion().getTime();
-		}
-		if (versionTime == null)
+	public Reviewer isValid(String name, String id, String versionTime) {
+		IDesignerUser user;
+		try {
+			user = getDesignerUser(name);
+		} catch (IOException e) {
+			e.printStackTrace(); //TODO
 			return null;
+		}
+		if (versionTime == null) {
+			if (user.getLatestVersion() != null) {
+				versionTime = user.getLatestVersion().getTime();
+			}
+		}
+		if (versionTime == null) {
+			return null;
+		}
 		List<Version> versionList = user.getVersions();
 		for (Version version : versionList) {
 			if (version.getTime().equals(versionTime)) {
@@ -250,31 +277,29 @@ public class ReviewManager implements IReviewManager {
 		return null;
 	}
 
-	private void loadUser(String name) {
-		IStorage versionFile;
-		if (ServerManager.LOCAL_INSTALL || Constants.LOCAL_INSTALL_USER_NAME.equals(name)) {
-			versionFile = this.baseDirectory.newInstance(this.baseDirectory, "/.review/snapshot/versions.xml");
-		} else {
-			versionFile = this.baseDirectory.newInstance(this.baseDirectory, "/" + name
-					+ "/.review/snapshot/versions.xml");
-		}
-		IDesignerUser user = new DesignerUser(name);
+	private IDesignerUser loadDesignerUser(IUser user) throws IOException {
+		//Create the designer user
+		IDesignerUser designerUser = new DesignerUser(user);
 
+		//Initialize the latest version
+		IStorage commentingDir = designerUser.getCommentingDirectory();
+		IStorage versionFile = commentingDir.newInstance(commentingDir, "snapshot/versions.xml");
 		if (versionFile.exists()) {
 			VersionFile file = new VersionFile();
 			List<Version> versions = file.load(versionFile);
 			for (Version version : versions) {
-				user.addVersion(version);
+				designerUser.addVersion(version);
 				if (file.latestVersionID != null
 						&& version.getVersionID().equals(file.latestVersionID)) {
-					user.setLatestVersion(version);
+					designerUser.setLatestVersion(version);
 				}
 			}
 		}
-		users.put(name, user);
+		
+		return designerUser;
 	}
 	
-	private Reviewer loadReviewer(String name, String email) {
+	private Reviewer loadReviewer(String name, String email) throws IOException {
 		Reviewer reviewer = new Reviewer(name, email);
 		IStorage versionFile = getReviewerVersionFile(reviewer);
 		if (versionFile.exists()) {
@@ -301,27 +326,29 @@ public class ReviewManager implements IReviewManager {
 		}
 		return false;
 	}
-	
-	class VersionFile {
+
+	public String getReviewUrl(String designerId, String version, String requestUrl, Boolean zazl) {
+		String prefix = requestUrl.substring(0, requestUrl.indexOf("/cmd/"));
+		String suffix = "?"
+				+ IDavinciServerConstants.REVIEW_DESIGNER_ATTR + "="
+				+ designerId /* FIXME: encode? */ + "&"
+				+ IDavinciServerConstants.REVIEW_VERSION_ATTR + "=" + version;
+		if (zazl) {
+			suffix += "&zazl=true";
+		}
+		return prefix + suffix;
+	}
+
+	private class VersionFile {
 		public String latestVersionID;
 
-		public void save(IStorage file, org.davinci.server.review.user.IDesignerUser user) {
+		public void save(IStorage file, IDesignerUser user) throws IOException {
 			OutputStream out = null;
 			try {
-				if (!file.exists())
-					try {
-						file.createNewFile();
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-
-				try {
-					out = file.getOutputStream();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+				if (!file.exists()) {
+					file.createNewFile();
 				}
+				out = file.getOutputStream();
 				DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 				DocumentBuilder builder = factory.newDocumentBuilder();
 				Document document = builder.newDocument();
@@ -353,7 +380,7 @@ public class ReviewManager implements IReviewManager {
 					element.setAttribute("hasRestarted", version.isHasRestarted()?"true":"false");
 					for (Reviewer reviewer : version.getReviewers()) {
 						Element reviewerElement = document.createElement("reviewer");
-						reviewerElement.setAttribute("name", reviewer.getUserName());
+						reviewerElement.setAttribute("name", reviewer.getUserID());
 						reviewerElement.setAttribute("email", reviewer.getEmail());
 
 						element.appendChild(reviewerElement);
@@ -388,18 +415,13 @@ public class ReviewManager implements IReviewManager {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} finally {
-				try {
-					if (out != null) {
-						out.close();
-					}
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+				if (out != null) {
+					out.close();
 				}
 			}
 		}
 
-		public List<Version> load(IStorage file) {
+		public List<Version> load(IStorage file) throws IOException {
 			ArrayList<Version> objects = new ArrayList<Version>();
 			InputStream input = null;
 			if (file.exists()) {
@@ -457,25 +479,15 @@ public class ReviewManager implements IReviewManager {
 						objects.add(version);
 
 					}
-				} catch (FileNotFoundException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
 				} catch (ParserConfigurationException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (SAXException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
 				} finally {
-					try {
-						if (input != null)
-							input.close();
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
+					if (input != null) {
+						input.close();
 					}
 				}
 			}
@@ -483,25 +495,17 @@ public class ReviewManager implements IReviewManager {
 		}
 	}
 	
-	class ReviewerVersionFile {
+	private class ReviewerVersionFile {
 		
-		public void save(IStorage file, org.davinci.server.review.user.Reviewer reviewer) {
+		public void save(IStorage file, org.davinci.server.review.user.Reviewer reviewer) throws IOException {
 			OutputStream out = null;
 			try {
-				if (!file.exists())
-					try {
-						file.createNewFile();
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-
-				try {
-					out = file.getOutputStream();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+				if (!file.exists()) {
+					file.createNewFile();
 				}
+
+				out = file.getOutputStream();
+
 				DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 				DocumentBuilder builder = factory.newDocumentBuilder();
 				Document document = builder.newDocument();
@@ -540,18 +544,13 @@ public class ReviewManager implements IReviewManager {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} finally {
-				try {
-					if (out != null) {
-						out.close();
-					}
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+				if (out != null) {
+					out.close();
 				}
 			}
 		}
 
-		public List<ReviewerVersion> load(IStorage file) {
+		public List<ReviewerVersion> load(IStorage file) throws IOException {
 			ArrayList<ReviewerVersion> objects = new ArrayList<ReviewerVersion>();
 			InputStream input = null;
 			if (file.exists()) {
@@ -572,123 +571,18 @@ public class ReviewManager implements IReviewManager {
 						objects.add(version);
 
 					}
-				} catch (FileNotFoundException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
 				} catch (ParserConfigurationException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (SAXException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
 				} finally {
-					try {
-						if (input != null)
-							input.close();
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+					if (input != null)
+						input.close();
 				}
 			}
 			return objects;
 		}
-	}
-
-	public IStorage getBaseDirectory() {
-		return baseDirectory;
-	}
-
-	public ILibInfo[] getSystemLibs(IDavinciProject project){
-		StringBuilder path = new StringBuilder();
-		path.append(baseDirectory.getAbsolutePath());
-		path.append("/");
-		path.append(project.getOwnerId());
-		path.append("/");
-		path.append(project.getProjectName());
-		path.append("/");
-		path.append(IDavinciServerConstants.SETTINGS_DIRECTORY_NAME);
-		return new LibrarySettings(this.baseDirectory.newInstance(path.toString())).allLibs();
-	}
-
-	public ILibInfo[] getVersionLib(IDavinciProject project, String version){
-		if(snapshotLibs == null){
-			snapshotLibs = new HashMap<IDavinciProject, HashMap<String, ILibInfo[]>>();
-		}
-		HashMap<String, ILibInfo[]> versions = snapshotLibs.get(project);
-		if(versions == null){
-			versions = new HashMap<String, ILibInfo[]>();
-			snapshotLibs.put(project, versions);
-		}
-		ILibInfo[] libInfos = versions.get(version);
-		if(libInfos == null){
-			StringBuilder path = new StringBuilder();
-			path.append(baseDirectory.getAbsolutePath());
-			path.append("/");
-			path.append(project.getOwnerId());
-			path.append("/");
-			path.append(Constants.REVIEW_DIRECTORY_NAME);
-			path.append("/snapshot/");
-			path.append(version);
-			path.append("/");
-			path.append(project.getProjectName());
-			path.append("/");
-			path.append(IDavinciServerConstants.SETTINGS_DIRECTORY_NAME);
-
-			libInfos = new LibrarySettings(this.baseDirectory.newInstance(path.toString())).allLibs();
-			if(libInfos != null)
-				versions.put(version, libInfos);
-		}
-		return libInfos;
-	}
-	
-	public static IPath adjustPath(IPath path, String ownerId, String version, String projectName){
-		// Map the request lib path stored in the snapshot to the actual system lib path
-		// A path like: project1/./lib/dojo/dojo.js
-		IReviewManager reviewManager = ReviewManager.getReviewManager();
-		IDavinciProject project = new DavinciProject();
-		project.setOwnerId(ownerId);
-		project.setProjectName(projectName);
-		ILibInfo[] sysLibs = reviewManager.getSystemLibs(project);
-		ILibInfo[] versionLibs = reviewManager.getVersionLib(project, version);
-
-		// If the lib path is not specified in the review version,
-		// just return the path
-		if(versionLibs == null) return path;
-		
-		IPath cp = new Path(path.toString());
-		IPath newPath = new Path(cp.segment(0));
-		cp = cp.removeFirstSegments(1);
-		
-		int c = 0;
-		while(cp.segment(0).equals(".") || cp.segment(0).equals("..")){
-			c++;
-		}
-		cp = cp.removeFirstSegments(c);
-		
-		for(ILibInfo info : versionLibs){
-			if (info.getVirtualRoot() == null) {
-				continue;
-			}
-			IPath versionVirtualRoot = new Path(info.getVirtualRoot());
-			if(cp.matchingFirstSegments(versionVirtualRoot) == versionVirtualRoot.segmentCount()){
-				String virtualRoot = null;
-				for(ILibInfo lib : sysLibs){
-					if(lib.getId().equals(info.getId())){
-						virtualRoot = lib.getVirtualRoot();
-						break;
-					}
-				}
-				if(virtualRoot != null){
-					IPath vr = newPath.append(virtualRoot);
-					return vr.append(cp.removeFirstSegments(versionVirtualRoot.segmentCount()));
-				}
-				break;
-			}
-		}
-		return path;
 	}
 }

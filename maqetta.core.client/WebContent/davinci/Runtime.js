@@ -1,8 +1,5 @@
 define([
 	"dojo/i18n!./nls/webContent",
-	"dijit/Dialog",
-	"dijit/form/Button",
-	"dijit/form/TextBox",
 	"./commands/CommandStack",
 	"./ui.plugin",
 	"./html/html.plugin",
@@ -10,12 +7,9 @@ define([
 	"./ve/ve.plugin",
 	"./ve/themeEditor/themeEditor.plugin",
 	"./review/review.plugin",
-	"./review/Color"
+	"./UserActivityMonitor"
 ], function(
 	webContent,
-	Dialog,
-	Button,
-	TextBox,
 	CommandStack,
 	ui_plugin,
 	html_plugin,
@@ -23,7 +17,7 @@ define([
 	ve_plugin,
 	themeEditor_plugin,
 	review_plugin,
-	Color
+	UserActivityMonitor
 ) {
 
 // list of plugins to load
@@ -42,23 +36,94 @@ var Runtime = {
 	subscriptions: [],
 	currentSelection: [],
 	commandStack: new CommandStack(),
-	
-	addPlugin: function(pluginName) {
-		url = pluginName + ".plugin";
-		dojo.xhrGet( {
-			// The following URL must match that used to test
-			// the server.
-			url:url,
-			handleAs:"json",
-			sync:true,
-			load: function(responseObject, ioArgs) {
-				Runtime._loadPlugin(responseObject,url);
-			}
-		});
-	},
 
 	getUser: function() {
-		return dojo.cookie("MAQETTA.USER");
+		return this._initializationInfo.userInfo;
+	},
+
+	getWorkbenchState: function() {
+		return this._initializationInfo.workbenchState;
+	},
+
+	/**
+	 * Returns the site-specific data for "name"
+	 * @param name {string}  Site-specific data index (e.g., "defaultThemeSet")
+	 * @returns
+	 */
+	getSiteConfigData: function(name){
+		return this._initializationInfo[name];
+	},
+
+	getDefaultThemeSet: function() {
+		return this.getSiteConfigData("defaultThemeSet");
+	},
+	
+	/*
+	 * Based on the information available, provides an appropriate string to
+	 * display that identifies the user. 
+	 * 
+	 * userInfo should be of the form:
+	 * 
+	 * 		{
+	 * 			email: "person@place.com",
+	 *			isLocalInstall: "false",
+	 * 			userDisplayName: "",
+	 *			userId: "A";
+	 * 		}
+	 * 
+	 * Because of the current user sign-up we have with Orion, we're not making 
+	 * any attempt to honor userId. In the future, it would be nice if the server
+	 * could signal us if userId is appropriate.
+	 * 
+	 * If userInfo is undefined, then the function will look up the info for the
+	 * current user.
+	 * 
+	 */
+	getUserDisplayName: function(userInfo) {
+		if (!userInfo) {
+			userInfo = this.getUser();
+		}
+
+		// Can't reliably use userId anymore (because of Orion), so first try first name and then
+		// drop back to e-mail
+		var displayName = userInfo.userDisplayName;
+		if (!userInfo.userDisplayName) {
+			displayName = userInfo.email;
+		}
+		return displayName;		
+	},
+
+	getUserEmail: function(userInfo) {
+		if (!userInfo) {
+			userInfo = this.getUser();
+		}
+		return userInfo.email;
+	},
+
+	/*
+	 * The goal is to return a string of the form:
+	 * 
+	 * 		displayName <email>
+	 * 
+	 * such as
+	 * 
+	 * 		Joe <joesmith@place.com>
+	 * 
+	 * but if displayName = email, then email will be returned.
+	 * 
+	 */
+	getUserDisplayNamePlusEmail: function(userInfo) {
+		if (!userInfo) {
+			userInfo = this.getUser();
+		}
+		
+		var result = this.getUserDisplayName(userInfo);
+		
+		if (result != userInfo.email) {
+			result += " &lt;" + userInfo.email + "&gt;";
+		}
+
+		return result;
 	},
 	
 	loadPlugins: function() {
@@ -79,8 +144,8 @@ var Runtime = {
 			}
 		});
 	},
-	
-	singleUserMode : function() {
+
+	singleUserMode: function() {
 		return Runtime.isLocalInstall;
 	},
 
@@ -92,27 +157,15 @@ var Runtime = {
 	location: function(){
 		return document.location.href.split("?")[0];
 	},
-	
-	//Not sure review-specific function like this belongs in Runtime, but 
-	//called from welcome_to_maqetta.html
-	publish: function(node) {
-		var publish = new davinci.review.actions.PublishAction();
-		publish.run(node);
+
+	getUserWorkspaceUrl: function(){
+		var loc = this.location();
+		if (loc.slice(-1) == '/') {
+			loc = loc.slice(0, -1);
+		}
+		return loc+'/user/'+Runtime.userName+'/ws/workspace/';
 	},
-	
-	//Review-specific... This should really be removed from Runtime
-	getColor: function(/*string*/ name) {
-		var index;
-		dojo.some(Runtime.reviewers,function(item,n){
-			if (item.name==name) {
-				index = n;
-				return true;
-			}
-			return false;
-		});
-		return Color.colors[index];
-	},
-	
+
 	run: function() {
 		// add class to root HTML element to indicate if mac or windows
 		// this is because of different alignment on mac/chrome vs win/chrome
@@ -137,7 +190,11 @@ var Runtime = {
 				window.davinciBackspaceKeyTime = Date.now();
 			}
 		});	
-		
+		UserActivityMonitor.setUpInActivityMonitor(dojo.doc, this);
+
+		// add key press listener
+		dojo.connect(dojo.doc.documentElement, "onkeydown", this, "_handleGlobalDocumentKeyEvent");
+				
 		dojo.addOnUnload(function (e) {
 			//This will hold a warning message (if any) that we'll want to display to the
 			//user.
@@ -145,7 +202,8 @@ var Runtime = {
 			
 			//Loop through all of the editor containers and give them a chance to tell us
 			//the user should be warned before leaving the page.
-			var editorContainers = davinci.Workbench.editorTabs.getChildren();
+			var editorContainers = (davinci.Workbench && davinci.Workbench.editorTabs) ? 
+					davinci.Workbench.editorTabs.getChildren() : [];
 			var editorsWithWarningsCount = 0;
 			for (var i = 0; i < editorContainers.length; i++) {
 				var editorContainer = editorContainers[i];
@@ -237,10 +295,7 @@ var Runtime = {
 			redirectUrl = ".";
 		}
 		
-		window.document.body.innerHTML = 
-			"<div><h1>Problem connecting to the Maqetta Server...</h1></div><div><center><h1><a href='"+ redirectUrl +
-			"'>Return to Maqetta Login</a></h1></center></div><br><br><div><h2>Error description:</h2>" + error + 
-			"</div>"; // TODO: i18n
+		window.document.body.innerHTML = dojo.string.substitute(webContent.serverConnectError, {redirectUrl:redirectUrl, error: error});
 	},
 
 	executeCommand: function(cmdID) {
@@ -258,88 +313,110 @@ var Runtime = {
 		return Runtime.currentSelection;
 	},
 
-	doLogin: function() {
-		var retry=true;
-		var formHtml = "<table>" +
-        "<tr><td><label for=\"username\">User: </label></td>" +
-        "<td><input dojoType=\dijit.form.TextBox\ type=\"text\" name=\"username\" id='username' ></input></td></tr>" +
-        "<tr><td><label for=\"password\">Password: </label></td> <td><input dojoType=\"dijit.form.TextBox\" type=\"password\" name=\"password\" id='password'></input></td></tr>" +
-        "<tr><td colspan=\"2\" align=\"center\"><button dojoType=\"dijit.form.Button\" type=\"submit\" >Login</button></td>" +
-        "</tr></table>"; // FIXME: i18n
-		do {
-			var isInput=false;
-			var dialog = new Dialog({
-				id: "connectDialog",
-				title: "Please login", 
-				onExecute: function(){
-					dojo.xhrGet({
-						url: "cmd/login",
-						sync: true,
-						handleAs: "text",
-						content:{
-						    userName: dojo.byId("username").value,
-						    password: dojo.byId("password").value,
-						    noRedirect: true
-						}
-					}).then(function(result) {
-						if (result=="OK") {
-						    // cheap fix.
-						    //window.location.reload();
-						    window.location.href= 'welcome';
-						    //retry=false;
-						} else {
-						    console.warn("Unknown error: result="+result);
-						}
-					    }, function(error) {
-					    	console.warn("Login error", error);
-					    });
-					isInput=true;
-				},
-				onCancel:function(){
-				    isInput=true;
-				    Runtime.destroyRecursive(false);
-				}
-			});	
-			dialog.setContent(formHtml);
-			dialog.show();			
-		} while (retry);
-	},
-	
+	// deprecated.  will fail for async.  use dojo/_base/xhr directly
 	serverJSONRequest: function (ioArgs) {
 		var resultObj;
-		var args={handleAs:"json" };
+		var args = {handleAs: "json"};
 		dojo.mixin(args, ioArgs);
-		var userOnError=ioArgs.error;
-		var retry = false;
-		
-		do {
-			dojo.xhrGet(args).then(function(result) {
-				if (result) {
-					resultObj=result;
-				}
-			});
-		} while (retry);	
+
+		dojo.xhrGet(args).then(function(result) {
+			if (result) {
+				resultObj=result;
+			}
+		});
 
 		return resultObj;
 	},
 
-	logoff: function(args) {
-		var loading = dojo.create("div",null, dojo.body(), "first");
-		loading.innerHTML='<table><tr><td><span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>&nbsp;Logging off...</td></tr></table>'; // FIXME: i18n
-		dojo.addClass(loading, 'loading');
-		require("davinci/Workbench").unload();
-		Runtime.serverJSONRequest({
-			url:"cmd/logoff", handleAs:"text", sync:true
-		});
-		var newLocation = Runtime.location(); //
-		var lastChar=newLocation.length-1;
-		if (newLocation.charAt(lastChar)=='/') {
-			newLocation=newLocation.substr(0,lastChar);
+	registerKeyBinding: function(keyBinding, pluginAction) {
+		if (!this._globalKeyBindings) {
+			this._globalKeyBindings = [];
 		}
-		location.href = newLocation+"/welcome";
+
+		this._globalKeyBindings.push({keyBinding: keyBinding, action: pluginAction});
+	},
+
+	/* called by any widgets that pass in events from other documents, so iframes from editors */
+	handleKeyEvent: function(e) {
+		this._handleKeyEvent(e, true);
+	},
+
+	/* called when events are trigged on the main document */
+	_handleGlobalDocumentKeyEvent: function(e) {
+		this._handleKeyEvent(e);
+	},
+
+	_handleKeyEvent: function(e, isFromSubDocument) {
+		if (!this._globalKeyBindings) {
+			return;
+		}
+
+		var stopEvent = false;
+
+		stopEvent = dojo.some(this._globalKeyBindings, dojo.hitch(this, function(globalBinding) {
+			if (Runtime.isKeyEqualToEvent(globalBinding.keyBinding, e)) {
+				davinci.Workbench._runAction(globalBinding.action);
+				return true;
+			}
+		}));
+
+		if (stopEvent) {
+			dojo.stopEvent(e);
+		} else if (!isFromSubDocument) {
+			// if not from sub document, let the active editor take a stab
+			if (this.currentEditor && this.currentEditor.handleKeyEvent) {
+				// pass in true to tell it its a global event
+				this.currentEditor.handleKeyEvent(e, true);
+			}
+		}
+	},
+
+	// compares keybinding to event
+	isKeyEqualToEvent: function(keybinding, e) {
+		var equal = true;
+
+		var hasAccel = ((e.ctrlKey && !dojo.isMac) || (dojo.isMac && e.metaKey))
+		var hasMeta = ((e.altKey && !dojo.isMac) || (dojo.isMac && e.ctrlKey))
+
+
+		if (!!keybinding.accel !== hasAccel) {
+			equal = false;
+		}
+
+		if (!!keybinding.meta !== hasMeta) {
+			equal = false;
+		}
+
+		if (!!keybinding.shift !== e.shiftKey) {
+			equal = false;
+		}
+
+		if (equal && keybinding.charOrCode && e.which) {
+			if (dojo.isArray(keybinding.charOrCode)) {
+				equal = dojo.some(keybinding.charOrCode, dojo.hitch(this, function(charOrCode) {
+					return this._comparecharOrCode(charOrCode, e);
+				}));
+			} else {
+				equal = this._comparecharOrCode(keybinding.charOrCode, e);
+			}
+		}
+
+		return equal;
+	},
+
+	_comparecharOrCode: function(charOrCode, e) {
+		var equal;
+
+		if (dojo.isString(charOrCode)) {
+			// if we have a string, use fromCharCode
+			equal = (charOrCode.toLowerCase() === String.fromCharCode(e.which).toLowerCase());
+		} else {
+			equal = (charOrCode === e.which);
+		}
+
+		return equal;
 	}
 };
 
-davinci.Runtime = Runtime; //FIXME: shouldn't need this
 return Runtime;
 });

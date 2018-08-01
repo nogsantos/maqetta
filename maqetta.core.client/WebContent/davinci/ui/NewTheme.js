@@ -1,24 +1,23 @@
 define(["dojo/_base/declare",
-        "dijit/_Templated",
-        "dijit/_Widget",
-        "davinci/library",
+        "dijit/_TemplatedMixin",
+        "dijit/_WidgetBase",
+        "dijit/_WidgetsInTemplateMixin",
         "system/resource",
-        "davinci/Runtime",
-        "davinci/model/Path",
-        "davinci/Workbench",
-        "davinci/workbench/Preferences",
-        "dojo/i18n!davinci/ui/nls/ui",
+        "../model/Path",
+        "../Workbench",
+        "../workbench/Preferences",
+        "dojo/i18n!./nls/ui",
         "dojo/i18n!dijit/nls/common",
         "dojo/text!./templates/newtheme.html",
-        "davinci/Theme",
-        "davinci/ui/widgets/ThemeSelection",
+        "../Theme",
+        "./widgets/ThemeSelection",
         "dijit/form/Button",
-        "dijit/form/ValidationTextBox",
+        "dijit/form/ValidationTextBox"
 
-],function(declare, _Templated, _Widget,  Library, Resource, Runtime, Path, Workbench, Preferences, uiNLS, commonNLS, templateString, Theme){
-	return declare("davinci.ui.NewTheme",   [dijit._Widget, dijit._Templated], {
+],function(declare, _TemplatedMixin, _WidgetBase, _WidgetsInTemplateMixin, Resource, Path, Workbench, Preferences, 
+			uiNLS, commonNLS, templateString, Theme, ThemeSelection, Button, ValidationTextBox){
+	return declare([_WidgetBase, _TemplatedMixin, _WidgetsInTemplateMixin], {
 		templateString: templateString,
-		widgetsInTemplate: true,
 		_themeSelection: null,
 		_okButton : null,
 		_folder : null,
@@ -81,11 +80,11 @@ define(["dojo/_base/declare",
 		},
 		
 		_createTheme : function(){
-		    
-	 
+			
+			this._okButton.set( 'disabled', true);
 			var langObj = uiNLS;
-			var oldTheme = this._themeSelection.attr('value');
-			var selector = dojo.attr(this._selector, 'value');
+			var oldTheme = this._themeSelection.get('value');
+			var selector = this._selector.get('value');
 			var themeName = selector;
 			var version = null;
 			var base = selector;
@@ -95,54 +94,46 @@ define(["dojo/_base/declare",
 			if(r1){
 				alert(langObj.themeAlreadyExists);
 			}else{
+				// put up theme create message
+				this._loading = dojo.create("div",null, dojo.body(), "first");
+				this._loading.innerHTML=dojo.string.substitute('<table><tr><td><span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>&nbsp;${0}...</td></tr></table>', [langObj.creatingTheme]);
+				dojo.addClass(this._loading, 'loading');
+				dojo.style(this._loading, 'opacity', '0.5');
 			    var basePath = this.getBase();
 			    // first we clone the theme which creates temp css files
-				var deferedList = Theme.CloneTheme(themeName,  version, selector, newBase, oldTheme, true);
-				deferedList.then(function(results){
-				    var error = false;
-			        for (var x=0; x < results.length; x++){
-			            if(!results[x][0] ){
-			                error = true;
-			            }  
-			        }
-			        if (!error){
-			        	var renameDefs = Theme.postClone(deferedList.toRename); // after the clone has completed rename the temp css files to the permanent name
-			        	renameDefs.then(function(results){
-							    function findTheme(basePath, theme){
-						            // flush the theme cache after creating so new themes show up 
-						            var themes = Library.getThemes(basePath, false, true);
-						            var found = null;
-						            for(var i=0;i<themes.length && ! found;i++){
-						                if(themes[i].name==theme)
-						                    found = themes[i];
-						            }
-						            return found;
-						        }
-						        var error = false;
-						        for (var x=0; x < results.length; x++){
-						            if(!results[x][0] ){
-						                error = true;
-						            }  
-						        }
-						        if(!error){
-					        		var found = findTheme(basePath, base);
-						            if (found){
-						                Workbench.openEditor({
-						                       fileName: found.file,
-						                       content: found.file.getText()});
-						            } else {
-						                // error message
-						                alert(langObj.errorCreatingTheme + base);
-						            }
-						        }
-
-			        	});
-			        }
-			    });
-			
+				//Theme.CloneTheme(themeName,  version, selector, newBase, oldTheme, true).then(function(results){
+				var a = Theme.CloneTheme(themeName,  version, selector, newBase, oldTheme, true);
+				a.promise.then(function(results){
+		        	// #23
+					var themeFile = a.themeFile;
+		            if (themeFile){
+		            	themeFile.isNew = false; // the file has been saved so don't delete it when closing editor without first save.
+	        			return themeFile.getContent().then(function(content) {
+			                Workbench.openEditor({
+			                    fileName: themeFile,
+			                    content: content
+			                });		        			
+		        		});
+		            } else {
+		            	throw new Error(langObj.errorCreatingTheme + base);
+		            }
+			    }).otherwise(function(failureInfo){
+					var message = "Uh oh! An error has occurred:<br><b>" + failureInfo.message + "</b>";
+					if (failureInfo.fileName) {
+						message += "<br>file: " + failureInfo.fileName + "<br>line: " + failureInfo.lineNumber;
+					}
+					if (failureInfo.stack) {
+						message += "<br><pre>" + failureInfo.stack + "</pre>";
+					}
+					//TODO: where in the UI can we surface this message?  Send to console, for now.
+					console.error(message);
+			    }).otherwise(function(){
+					if (this._loading){ // remove the loading div
+		    			this._loading.parentNode.removeChild(this._loading);
+		    			delete this._loading;
+		    		}
+			    }.bind(this));
 			}
-			
-			
 	  	},
 		
 		/*
@@ -156,7 +147,7 @@ define(["dojo/_base/declare",
 		
 		_getThemeLocation : function(){
 			
-			var selector = dojo.attr(this._selector, 'value');
+			var selector = this._selector.get('value');
 			
 			//var resource = Resource.findResource("./themes");
 
@@ -166,24 +157,24 @@ define(["dojo/_base/declare",
 			var base = this.getBase();
 			var prefs = Preferences.getPreferences('davinci.ui.ProjectPrefs',base);
 			
-			var projectThemeBase = (new Path(base).append(prefs['themeFolder']));
+			var projectThemeBase = new Path(base).append(prefs.themeFolder);
 			
-			return  projectThemeBase.append(selector).toString();
+			return projectThemeBase.append(selector).toString();
 		},
 		
 		_checkValid : function(){
 			
 			var isOk = true;
-			var oldTheme = this._themeSelection.attr('value');
+			var oldTheme = this._themeSelection.get('value');
+			var selector = this._selector.get('value');
 			
-			if( oldTheme==null || oldTheme =="" ) { isOk = false;}
+			if( oldTheme==null || oldTheme =="" || selector==null || selector =="") { isOk = false;}
 
 			this._okButton.set( 'disabled', !isOk);
 		},
 		
 		okButton : function(){
 			this._createTheme();
-			this.onClose();
 		},
 		
 		cancelButton: function(){
@@ -192,11 +183,6 @@ define(["dojo/_base/declare",
 		},
 
 		onClose : function(){}
-
-
-		
-
-
 	});
 });
 

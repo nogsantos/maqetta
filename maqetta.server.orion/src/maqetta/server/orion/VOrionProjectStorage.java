@@ -1,40 +1,62 @@
 package maqetta.server.orion;
 
+import java.io.IOException;
+
 import org.eclipse.core.filesystem.EFS;
 import org.eclipse.core.filesystem.IFileStore;
 import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.IPath;
-import org.eclipse.core.runtime.Path;
 import org.eclipse.orion.internal.server.servlets.workspace.WebProject;
-import org.maqetta.server.IStorage;
 
+@SuppressWarnings("restriction")
 public class VOrionProjectStorage extends VOrionStorage {
 	WebProject proj;
 	
-	public VOrionProjectStorage(String name, IFileStore store,WebProject proj) {
-		super(name, store);
+	public VOrionProjectStorage(String name, IFileStore store,WebProject proj, VOrionProjectStorage parent) {
+		super(name, store, parent);
 		this.proj = proj;
-		if(store!=null){
-			try {
-				this.store.mkdir(EFS.NONE, null);
-			} catch (CoreException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
 	}
+
+	protected VOrionProjectStorage(String name, IFileStore store,VOrionProjectStorage parent) {
+		this(name, store,null,parent);
+	}
+
+	 public boolean delete() {
+		try {
+			this.store.delete(EFS.NONE, null);
+			((VOrionWorkspaceStorage)this.parent).removeProject(this.proj);
+			proj.remove();
+			proj.save();
+		} catch (CoreException e) {
+			return false;
+		}
+		 return true;
+	 }
 	
-	protected VOrionProjectStorage(String name, IFileStore store) {
-		this(name, store,null);
+	public boolean isDirectory() {
+		return true;
 	}
 	
 	public VOrionStorage getParentFile() {
-		// orion projects have no storable parent elemnt.
-		return null;
+		return this.parent;
 	}
-	
-	public String getOrionLocation(){
-		return "/file/" + proj.getId();
+
+	public void createNewFile() throws IOException {
+		throw new IOException("Cannot create file representing directory -- operation not allowed.");
+	}
+
+	public void mkdir() throws IOException {
+		((VOrionWorkspaceStorage)this.parent).createProject(this.name);
+	}
+
+	public boolean mkdirs() {
+		try {
+			this.mkdir();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return false;
+		}
+		return true;
 	}
 
 }

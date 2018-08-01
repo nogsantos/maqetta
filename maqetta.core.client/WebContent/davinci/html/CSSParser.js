@@ -44,7 +44,7 @@ var CSSParser = (function() {
 					setState(inString(ch));
 					return null;
 				} else if (ch == "#") {
-					source.nextWhileMatches(/\w/);
+					source.nextWhileMatches(/[\w-]/);
 					return "css-hash";
 				} else if (ch == "!") {
 					source.nextWhileMatches(/[ \t]/);
@@ -214,6 +214,7 @@ CSSParser.parse = function (text, parentElement) {
 	var combined;
 	var combiner = ' ';
 	var errors = [];
+	var models = [];
 	var model, wsAfterSel;
 	function error(text) {
 		console.log("ERROR: " + text);
@@ -226,27 +227,25 @@ CSSParser.parse = function (text, parentElement) {
 			s;
 
 		token = parser.next();
-		while (token.style == "css-comment" || token.style == "whitespace" ||
-				(token.content == '/' && stream.peek() == '/')) {
-			if (token.style == "css-comment") {
+		var commentStart = false;
+		while (token.style == "css-comment" || token.style == "whitespace" /*||
+				(token.content == '/' && stream.peek() == '/')*/) {
+			if (token.style == "css-comment" || commentStart) {
 				if (! pushComment) {
 					pushComment = new Comment();
 				}
-				var commentStart = false;
 				s = token.content;
-				if (token.content.indexOf("/*") === 0) {
+				if (token.content.indexOf("/*") === 0) { // start block comment
 					s = s.substring(2);
 					commentStart = true;
-				}
-				if (s.lastIndexOf("*/") == s.length - 2) {
+					pushComment.addComment('block', start, stop, "" /*s*/);
+				} 
+				if ((s.lastIndexOf("*/") > -1) && (s.lastIndexOf("*/") == s.length - 2)) { // end block comment
 					s = s.substring(0, s.length - 2);
+					commentStart = false;
 				}
-				if (commentStart) {
-					pushComment.addComment('block', start, stop, s);
-				} else {
-					pushComment.appendComment(s);
-				}
-			} else if (token.content == '/') {
+				pushComment.appendComment(s);
+			} /*else if (token.content == '/') { // double slash comment to EOF
 				start = token.offset;
 				parser.next();// second slash
 				if (! pushComment) {
@@ -257,11 +256,7 @@ CSSParser.parse = function (text, parentElement) {
 				}
 				s = stream.get();
 				pushComment.addComment('line', start, start + s.length, s);
-			} else {
-				if (pushComment) {
-					pushComment.appendComment(token.value);
-				}
-			}
+			} */
 			token = parser.next();
 		}
 		return token;
@@ -308,8 +303,12 @@ CSSParser.parse = function (text, parentElement) {
 					throw StopIteration;
 				}
 				model = new CSSRule();
+				models.push(model);
 				model.startOffset = token.offset;
-				parentElement.addChild(model, undefined, true);
+
+				if (parentElement) {
+					parentElement.addChild(model, undefined, true);
+				}
 
 				wsAfterSel = false;
 				combined = undefined;
@@ -358,7 +357,7 @@ CSSParser.parse = function (text, parentElement) {
 
 					case "css-selector":
 						if (token.type == "css-identifier") {
-							if (selector.element || selector.cls) {
+							if (selector.element || selector.cls || wsAfterSel) { //#3745 #content a:hover
 								startNew();
 							}
 							selector.element = token.content;
@@ -381,7 +380,14 @@ CSSParser.parse = function (text, parentElement) {
 								nextToken();
 								selector.pseudoElement = token.content;
 							} else {
+								/* #2794
+								 * .claro .dijitCalendarEnabledDate:hover .dijitCalendarDateLabe1
+								 * pseudoRule eg. :hover always comes after the selector,
+								 * so we need to set the wsAfterSel flag 
+								 */
 								selector.pseudoRule = token.content;
+								wsAfterSel = true;
+				
 							}
 						} else if (token.content == "[") {
 							nextToken();
@@ -404,7 +410,10 @@ CSSParser.parse = function (text, parentElement) {
 					wasSelector = true;
 					nextToken();
 				} // END selectorLoop for(;;) loop
-
+				if (pushComment) { //#2166 comments before this CSSRule in the css file ex block comment before
+					model.comment = pushComment;
+					pushComment = null;
+				}
 				selector.endOffset = token.offset - 1;
 				while (nextToken().content != "}") {
 					var nameOffset = token.offset;
@@ -421,7 +430,7 @@ CSSParser.parse = function (text, parentElement) {
 						if (token.content != "*") { // is probably bad syntax,
 							// but dojo.css has "
 							// *font-size "
-							error("expecting identifier");
+							error("expecting identifier around " +selector.getText()+ "{ "+property.name + ": "+ propery.value);
 						} else {
 							nextToken();
 							propertyName += token.content;
@@ -430,20 +439,34 @@ CSSParser.parse = function (text, parentElement) {
 					var property = new CSSProperty();
 					property.startOffset = nameOffset;
 					property.parent = model;
+					if (pushComment) { //#2166
+						property.comment = pushComment;
+						pushComment = null;
+					}
 					// property.setStart(nexttoken.line,nexttoken.from);
 					model.properties.push(property);
 					model.addChild(property, undefined, true);
 					property.name = propertyName;
 					if (!skipNext) {
 						if (nextToken().content != ":")  {
-							error("expecting ':'");
+							error("expecting ':' " +selector.getText()+ "{ "+property.name + ": "+ propery.value);
 						}
 					}
 					nextToken();
 					property.value = token.value;
+
+					if (property.value == "url") { 
+						// urls can contain data: urls #2057, so go until )
+						while ((nextToken()).content != ")") {
+							property.value += token.value;
+						}
+						property.value += token.value; // add the ')' that stoped the loop
+					}
+
 					while ((nextToken()).content != ";" && token.content != "}") {
 						property.value += token.value;
 					}
+
 					if (pushComment) {
 						property.postComment = pushComment;
 						pushComment = null;
@@ -467,7 +490,11 @@ CSSParser.parse = function (text, parentElement) {
 				var atRule = (ruleName == "import") ? new CSSImport()
 				: new CSSAtRule();
 				atRule.startOffset = token.offset;
-				parentElement.addChild(atRule, undefined, true);
+
+				if (parentElement) {
+					parentElement.addChild(atRule, undefined, true);
+				}
+
 				if (ruleName == "import") {
 					var cssImport = atRule;
 					nextToken();
@@ -542,8 +569,13 @@ CSSParser.parse = function (text, parentElement) {
 
 			} // END outer switch(token.style)
 		} while (true);
-	} catch (e) {}
-	return {errors:errors};
+	} catch (e) {
+		if (pushComment && model) { //#2166 comments after last CSSRUle this CSSRule in the css file ex block comment 
+			model.postComment = pushComment;
+			pushComment = null;
+		}
+	}
+	return {errors:errors, model: models};
 };
 
 return CSSParser;

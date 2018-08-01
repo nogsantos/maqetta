@@ -30,7 +30,6 @@ define(["dojo/_base/declare",
 		postMixInProperties: function() {
 			dojo.mixin(this, uiNLS);
 			dojo.mixin(this, commonNLS);
-			this.cancel = true;
 			this.inherited(arguments);
 		},
 		postCreate: function(){
@@ -76,18 +75,33 @@ define(["dojo/_base/declare",
 		_okButton: function(){
 			var resources = this.fileTree.get('selectedItems');
 			this.value = resources[0];
-			this.cancel = false;
-			this.onClose();
+		},
+
+		_onDblClick: function(item) {
+			this._okButton();
+			this.onExecute();
+		},
+
+		_onKeyPress: function(e) {
+			if (e.which == dojo.keys.ENTER) {
+				this._okButton();
+				this.onExecute();
+			}
 		},
 		
 		_getValueAttr: function(){
 			return this.value;
 		},
 		
-		cancelButton: function(){
-			this.cancel = true;
+		_cancelButton: function(){
 			this.onClose();
 		},
+
+		resize: function(coords) {
+			this.contentpane.resize(coords);
+		},
+
+		onExecute: function(){},
 		
 		onClose: function(){}
 	});

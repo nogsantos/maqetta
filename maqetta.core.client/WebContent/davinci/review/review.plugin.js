@@ -8,47 +8,59 @@ return {
 		{
 			id: "comment",
 			title: "Comments",
-			viewClass: "davinci/review/view/CommentView"
+			viewClass: "davinci/review/view/CommentView",
+            iconClass: "paletteIcon paletteIconComments"
 		},
 		{
 			id: "reviewNavigator",
 			title: "Reviews",
-			viewClass: "davinci/review/view/CommentExplorerView"
+			viewClass: "davinci/review/view/CommentExplorerView",
+            iconClass: "paletteIcon paletteIconReviews"
 
 		},
 		{
 			id: "state",
 			title: "States",
-			viewClass: "davinci/ve/views/StatesView"
-		}
-	],
-	"davinci.perspectiveExtension": [
-		{
-			targetID: "davinci.ve.pageDesign",
-			views: [
-				{
-					viewID: "davinci.review.reviewNavigator",
-					position: "left"
-				}
-			]
+			viewClass: "davinci/ve/views/StatesView",
+            iconClass: "paletteIcon paletteIconStates"
 		}
 	],
 	"davinci.perspective": {
-		id: "comment",
-		title: "Comment",
+		id: "review",
+		title: "Review",
 		views: [
-			{
-				viewID: "davinci.review.reviewNavigator",
-				position: "left"
-			},
-			{
-				viewID: "davinci.review.comment",
-				position: "left"
-			},
-			{
-				viewID: "davinci.review.state",
-				position: "right"
-			}
+            {
+                viewID: "davinci.ve.Palette",
+                position: "left",
+                hidden: true
+            },
+            {
+                viewID: "davinci.ui.outline",
+                position: "left",
+                hidden: true
+            },
+            {
+                viewID: "davinci.ve.style",
+                position: "right"
+            },
+            {
+                viewID: "davinci.ui.comment",
+                position: "right",
+                selected: true
+            },
+            {
+                viewID: "davinci.ve.states",
+                position: "right-bottom"
+            },
+            {
+                viewID: "davinci.ui.navigator",
+                position: "left-bottom"
+            },
+            {
+                viewID: "davinci.review.reviewNavigator",
+                position: "left",
+                selected: true
+            }
 		]
 	},
 	"davinci.editor": [
@@ -59,11 +71,8 @@ return {
 			isDefault: true,
 			editorClass: "davinci/review/editor/ReviewEditor",
 			editorClassName: "ReviewEditor",
-            palettesToTop: [
-                "davinci.review.reviewNavigator", //Reviews
-                "davinci.ui.comment", //Comments
-                "davinci.ve.states" //States(Scenes)
-            ]
+			palettePerspective: "davinci.review.review",
+	        expandPalettes: ["right"]
 		}
 	],
 	"davinci.fileType": [
@@ -75,16 +84,15 @@ return {
 	],
 	"davinci.actionSets": [
 		{
-			id: "main",
+			id: "editorActionsReview",
 			visible: true,
 			actions: [
 				{
 					id: "newReview",
-					run: function(){
-						require("davinci/Runtime").publish();
-					},
+					action: "davinci/review/actions/PublishAction",
+	                iconClass: "newOpenMenuItem newReviewMenuItem",
 					label: "Review...",
-					menubarPath: "davinci.new/additions"
+					menubarPath: "davinci.new/newTheme"
 				}
 			]
 		},
@@ -94,7 +102,7 @@ return {
 			actions: [
 				{
 					id: "davinci.review.view",
-					label: "View Page",
+					label: "Open",
 					action: "davinci/review/actions/ViewFileAction",
 					//iconClass: "viewActionIcon reviewFileIcon",
 					menubarPath: "newfile"
@@ -106,19 +114,6 @@ return {
 					//iconClass: "viewActionIcon editVersionIcon",
 					menubarPath: "newfile"
 				},
-		/*{
-								    id: "davinci.review.submitDraft",
-								    label: "Submit the draft",
-									action: "davinci/review/actions/SubmitDraftAction",
-									menubarPath: "newfile"
-								},*/
-				{
-					id: "davinci.review.close",
-					label: "Terminate",
-					action: "davinci/review/actions/CloseVersionAction",
-					//iconClass: "viewActionIcon closeVersionIcon",
-					menubarPath: "newfile"
-				},
 				{
 					id: "davinci.review.open",
 					label: "Start",
@@ -127,15 +122,23 @@ return {
 					menubarPath: "newfile"
 				},
 				{
-					id: "davinci.review.delete",
-					label: "Delete",
-					action: "davinci/review/actions/DeleteVersionAction",
-					//iconClass: "viewActionIcon deleteVersionIcon",
+					id: "davinci.review.close",
+					label: "Stop...",
+					action: "davinci/review/actions/CloseVersionAction",
+					//iconClass: "viewActionIcon closeVersionIcon",
 					menubarPath: "newfile"
 				},
 				{
+					id: "davinci.review.delete",
+					label: "Delete...",
+					action: "davinci/review/actions/DeleteVersionAction",
+					//iconClass: "viewActionIcon deleteVersionIcon",
+					menubarPath: "newfile",
+					keyBinding: {charOrCode: [dojo.keys.DELETE, dojo.keys.BACKSPACE]}
+				},
+				{
 					id: "davinci.review.restart",
-					label: "Renew",
+					label: "Republish...",
 					action: "davinci/review/actions/RestartVersionAction",
 					menubarPath: "newfile"
 				}
@@ -144,6 +147,10 @@ return {
 		}
 	],
 	"davinci.actionSetPartAssociations": [
+		{
+			targetID: "davinci.review.editorActionsReview",
+			parts: ["davinci.ui.editorMenuBar"]
+		  },
 		{
 			targetID: "davinci.review.reviewExplorerActions",
 			parts: ["davinci.review.reviewNavigator"]
@@ -179,6 +186,14 @@ return {
 					iconClass: "davinciAnnotationIcon davinciAnnotationIconText",
 					action: "davinci/review/actions/TextAction",
 					toolbarPath: "annotationtools"
+				},
+				{
+				    id: "deleteAnnotation",
+				    iconClass: "davinciAnnotationIcon davinciAnnotationIconDelete",
+				    label: "Delete Annotation",
+				    action: "davinci/review/actions/DeleteAnnotationAction",
+				    toolbarPath: "annotationtools_delete",
+				    keyBinding: {charOrCode: [dojo.keys.DELETE, dojo.keys.BACKSPACE]}
 				}
 			]
 		}

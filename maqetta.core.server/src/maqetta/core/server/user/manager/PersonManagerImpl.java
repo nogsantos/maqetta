@@ -1,6 +1,7 @@
 package maqetta.core.server.user.manager;
 
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Set;
@@ -16,13 +17,13 @@ import org.w3c.dom.Element;
 
 public class PersonManagerImpl implements IPersonManager {
 
-    protected HashMap             persons      = new HashMap();
+    protected HashMap<String, IPerson> persons = new HashMap<String, IPerson>();
 
-    static final String USERS_TAG    = "users";
-    static final String USER_TAG     = "user";
-    static final String NAME_TAG     = "name";
-    static final String PASSWORD_TAG = "password";
-    static final String EMAIL_TAG    = "email";
+    protected static final String USERS_TAG    = "users";
+    protected static final String USER_TAG     = "user";
+    protected static final String NAME_TAG     = "name";
+    protected static final String PASSWORD_TAG = "password";
+    protected static final String EMAIL_TAG    = "email";
 
     IStorage                baseDirectory;
 
@@ -41,9 +42,14 @@ public class PersonManagerImpl implements IPersonManager {
             return email;
         }
 
-        public String getUserName() {
+        public String getUserID() {
             return name;
         }
+
+		public String getDisplayName() {
+			// TODO Auto-generated method stub
+			 return email;
+		}
 
     }
 
@@ -65,20 +71,20 @@ public class PersonManagerImpl implements IPersonManager {
             String email = element.getAttribute(PersonManagerImpl.EMAIL_TAG );
             String password = element.getAttribute(PersonManagerImpl.PASSWORD_TAG);
             PersonImpl user = new PersonImpl(name,  password, email);
-            PersonManagerImpl.this.persons.put(user.getUserName(), user);
+            PersonManagerImpl.this.persons.put(user.getUserID(), user);
             return user;
         }
 
         protected String[] getAttributeValues(Object object) {
             PersonImpl user = (PersonImpl) object;
-            return new String[] { user.getUserName(), user.password, user.getEmail() };
+            return new String[] { user.getUserID(), user.password, user.getEmail() };
         }
 
 		@Override
 		protected String getAttributeValue(String attribute, Object object) {
 			  PersonImpl user = (PersonImpl) object;
 			  if(attribute.equalsIgnoreCase(PersonManagerImpl.NAME_TAG)){
-					return user.getUserName();
+					return user.getUserID();
 			  }
 			  if(attribute.equalsIgnoreCase(PersonManagerImpl.PASSWORD_TAG)){
 					return user.password;
@@ -92,8 +98,15 @@ public class PersonManagerImpl implements IPersonManager {
 
     }
 
+    protected IStorage getBaseDirectory(){
+    	if(this.baseDirectory==null){
+    		this.baseDirectory = ServerManager.getServerManager().getBaseDirectory();	
+    	}
+    	return this.baseDirectory;
+    }
+    
     public PersonManagerImpl() {
-    	this.baseDirectory = ServerManager.getServerManger().getBaseDirectory();
+    	
     	loadUsers();
     }
     
@@ -117,7 +130,7 @@ public class PersonManagerImpl implements IPersonManager {
      * @see org.davinci.server.user.impl.UserManager#addUser(java.lang.String,
      * java.lang.String, java.lang.String)
      */
-    public IPerson addPerson(String userName, String password, String email) throws UserException {
+    public IPerson addPerson(String userName, String password, String email) throws UserException, IOException {
         IPerson person = (IPerson) persons.get(userName);
         if (person != null) {
             throw new UserException(UserException.ALREADY_EXISTS);
@@ -164,31 +177,33 @@ public class PersonManagerImpl implements IPersonManager {
         return password.equals(person.password);
     }
 
-    private void loadUsers() {
-        IStorage userFile =this.baseDirectory.newInstance(this.baseDirectory, IDavinciServerConstants.USER_LIST_FILE);
+    protected void loadUsers() {
+    	IStorage baseDirectory = getBaseDirectory();
+        IStorage userFile = baseDirectory.newInstance(baseDirectory, IDavinciServerConstants.USER_LIST_FILE);
         if (userFile.exists()) {
             new UsersFile().load(userFile);
 
         }
     }
 
-    private void savePersons() {
-        IStorage userFile = this.baseDirectory.newInstance(this.baseDirectory, IDavinciServerConstants.USER_LIST_FILE);
+    protected void savePersons() throws IOException {
+    	IStorage baseDirectory = getBaseDirectory();
+        IStorage userFile = baseDirectory.newInstance(baseDirectory, IDavinciServerConstants.USER_LIST_FILE);
         new UsersFile().save(userFile, this.persons.values());
     }
 
     public IPerson getPerson(String userName) {
 
-        PersonImpl person = (PersonImpl) persons.get(userName);
+        IPerson person = (IPerson) persons.get(userName);
         return person;
 
     }
     
     public IPerson getPersonByEmail(String email) {
-    	PersonImpl match = null;
-        Iterator peopleIterator = persons.values().iterator();
+    	IPerson match = null;
+        Iterator<IPerson> peopleIterator = persons.values().iterator();
         while (peopleIterator.hasNext() && match == null) {
-        	PersonImpl person = (PersonImpl)peopleIterator.next();
+        	IPerson person = (IPerson)peopleIterator.next();
         	if (person.getEmail().equals(email)) {
         		match = person;
         	}

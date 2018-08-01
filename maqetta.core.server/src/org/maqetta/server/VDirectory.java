@@ -9,6 +9,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLConnection;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Vector;
 
@@ -35,12 +36,24 @@ public class VDirectory implements IVResource {
         this.readOnly = readOnly;
     }
     
+    public boolean hasSource(){
+    	return false;
+    }
+    
+    public boolean isSource(){
+    	return parent!=null && this.parent.isSource();
+    }
+    
+    public IVResource getSource(){
+    	return this;
+    }
+    
     protected VDirectory() {
         // TODO Auto-generated constructor stub
         this.children = new Vector();
     }
 
-    public IVResource create(String path) {
+    public IVResource create(String path) throws IOException {
         // TODO Auto-generated method stub
         return null;
     }
@@ -50,7 +63,7 @@ public class VDirectory implements IVResource {
 
     }
 
-    public boolean delete() {
+    public boolean delete() throws IOException {
         // TODO Auto-generated method stub
         return false;
     }
@@ -76,7 +89,10 @@ public class VDirectory implements IVResource {
 
             parent = parent.get(split[i]);
         }
-        return new IVResource[] { parent };
+        if(parent!=null)
+        	return new IVResource[] { parent };
+        
+        return new IVResource[0];
     }
 
     public void flushWorkingCopy() {
@@ -98,7 +114,7 @@ public class VDirectory implements IVResource {
         if (name != null && name.length() > 0 && name.charAt(name.length() - 1) == '/') {
             name = name.substring(0, name.length() - 1);
         }
-        if (name != null && name.length() > 0 && name.charAt(0) == '.') {
+        if (name != null && name.length() > 0 && name.indexOf("./")==0 ) {
             name = name.substring(1);
         }
         if (name != null && name.length() > 0 && name.charAt(0) == '/') {
@@ -120,7 +136,14 @@ public class VDirectory implements IVResource {
 
     public IVResource[] getParents() {
         // TODO Auto-generated method stub
-        return null;
+        IVResource parent = this.parent;
+        ArrayList parents = new ArrayList();
+        while (parent != null) {
+            parents.add(0, parent);
+            parent = parent.getParent();
+
+        }
+        return (IVResource[]) parents.toArray(new IVResource[parents.size()]);
     }
 
     public String getPath() {
@@ -173,6 +196,14 @@ public class VDirectory implements IVResource {
 
     public void add(IVResource v) {
     	/* ensure that this object is set as the parent */
+    	
+    	for(int i=0;i<this.children.size();i++){
+    		IVResource child = (IVResource)this.children.get(i);
+    		if(child.getName().equals(v.getName())){
+    			this.children.remove(i);
+    		}
+    		
+    	}
     	v.setParent(this);
         this.children.add(v);
 
@@ -229,7 +260,7 @@ public class VDirectory implements IVResource {
             IVResource r1 = (IVResource) children.get(i);
             File f1 = new File(r1.getName());
             if (filter.accept(f1)) {
-                results.add(f1);
+                results.add(r1);
             }
 
             if (r1.isDirectory()) {

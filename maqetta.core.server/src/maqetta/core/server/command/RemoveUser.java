@@ -18,14 +18,14 @@ public class RemoveUser extends Command {
         
       
         /* this command can only be called from 127.0.0.1, sorry hackers */
-//        if(req.getRemoteAddr().compareTo("127.0.0.1")!=0) return; // FIXME: this test is not working as intended.
+        if(!Command.isLocalRequest(req)) return; // FIXME: this test is not working as intended.
 
         try {
-            ServerManager.getServerManger().getUserManager().removeUser(name);
+            ServerManager.getServerManager().getUserManager().removeUser(name);
             this.responseString = "OK";
             HttpSession session = req.getSession(false);
             if (session != null) {
-                if (user != null && user.getUserName().equals(name)) {
+                if (user != null && user.getUserID().equals(name)) {
                     /*
                      * we deleted a logged-in user. so, log them out
                      */
@@ -33,7 +33,7 @@ public class RemoveUser extends Command {
                 }
             }
         } catch (UserException e) {
-            this.responseString = e.getReason();
+            this.responseString = e.getMessage();
         }
     }
 }

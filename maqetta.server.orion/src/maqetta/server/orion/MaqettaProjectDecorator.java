@@ -1,7 +1,6 @@
 package maqetta.server.orion;
 
 import java.net.URI;
-import java.net.URISyntaxException;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -10,14 +9,13 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.orion.internal.server.core.IWebResourceDecorator;
-import org.eclipse.orion.internal.server.servlets.ProtocolConstants;
 import org.eclipse.orion.internal.server.servlets.workspace.WebProject;
-import org.eclipse.orion.server.core.LogHelper;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.maqetta.server.IDavinciServerConstants;
 
+@SuppressWarnings("restriction")
 public class MaqettaProjectDecorator implements IWebResourceDecorator {
 
 	/*
@@ -29,43 +27,68 @@ public class MaqettaProjectDecorator implements IWebResourceDecorator {
 	 * 	
 	 */
 	public void addAtributesFor(HttpServletRequest request, URI resource,JSONObject representation) {
-		IPath resourcePath = new Path(resource.getPath());
+		IPath resourcePath = new Path(request.getServletPath() + (request.getPathInfo() == null ? "" : request.getPathInfo()));
 		
-		if (!"/workspace".equals(request.getServletPath())) //$NON-NLS-1$
-			return;
-		if (resourcePath.segmentCount() != 2)
-			return;
-		try {
-			JSONArray projObjects = representation.getJSONArray("Children");
-			for (int i = 0; i < projObjects.length(); i++) {
-				JSONObject projectObject = (JSONObject) projObjects.get(i);
-				if (checkMaqettaProject(projectObject)){
-					projectObject.put(IDavinciServerConstants.MAQETTA_PROJECT, true);
-				}else{
-					projectObject.put("rootFolder", true);
-				}
-			}
-		} catch (JSONException e) {
+		if ("/workspace".equals(request.getServletPath()) && resourcePath.segmentCount() == 2) {
 			try {
-				if(checkMaqettaProject(representation))
-					representation.put(IDavinciServerConstants.MAQETTA_PROJECT, true);
-				else
-					representation.put("rootFolder", true);
-			} catch (JSONException e1) {
+				JSONArray projObjects = representation.getJSONArray("Children");
+				for (int i = 0; i < projObjects.length(); i++) {
+					JSONObject projectObject = (JSONObject) projObjects.get(i);
+					if (checkMaqettaProject(projectObject)){
+						projectObject.put(IDavinciServerConstants.MAQETTA_PROJECT, true);
+					}else{
+						projectObject.put("maqettaProject", false);
+					}
+				}
+			} catch (JSONException e) {
+				try {
+					if(checkMaqettaProject(representation))
+						representation.put(IDavinciServerConstants.MAQETTA_PROJECT, true);
+					else
+						representation.put("rootFolder", true);
+				} catch (JSONException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				} catch (CoreException e2) {
+					// TODO Auto-generated catch block
+					e2.printStackTrace();
+				}
+			} catch (CoreException e) {
 				// TODO Auto-generated catch block
-				e1.printStackTrace();
-			} catch (CoreException e2) {
-				// TODO Auto-generated catch block
-				e2.printStackTrace();
-			}
-		} catch (CoreException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} 
+				e.printStackTrace();
+			} 
+		}else if("/file".equals(request.getServletPath()) ){
+			try {
+				
+				/* if we get here, we're getting file contents from workspace. so need a way to check if its already a project
+				 * 
+				 */
+				
+			
+				JSONArray projObjects = representation.getJSONArray("Children");
+				for (int i = 0; i < projObjects.length(); i++) {
+					JSONObject projectObject = (JSONObject) projObjects.get(i);
+					if(projectObject.getBoolean("Directory"))
+						projectObject.put("maqettaProject", false);
+				
+				}
+				
+			} catch (JSONException e) {
+				try {
+				
+						representation.put(IDavinciServerConstants.MAQETTA_PROJECT, true);
+					
+				} catch (JSONException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				} 
+			} 
+		}
+			
+		
 
 	}
 	private boolean checkMaqettaProject(JSONObject projectObject) throws JSONException, CoreException{
-	
 		WebProject project = WebProject.fromId(projectObject.getString("Id"));
 		IFileStore settings;
 		settings = project.getProjectStore().getChild(IDavinciServerConstants.SETTINGS_DIRECTORY_NAME);

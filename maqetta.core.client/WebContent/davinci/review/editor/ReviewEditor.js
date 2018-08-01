@@ -3,20 +3,21 @@ define([
     "davinci/ui/ModelEditor",
     "dijit/layout/BorderContainer",
     "dijit/layout/ContentPane",
-    "davinci/review/editor/Context",
+    "./Context",
 	"davinci/Runtime",
+	"davinci/model/Path",
 	"preview/silhouetteiframe",
 	"dojo/i18n!./nls/review",
-], function(declare, ModelEditor, BorderContainer, ContentPane, Context, Runtime, SilhouetteIframe, reviewNls) {
+], function(declare, ModelEditor, BorderContainer, ContentPane, Context, Runtime, Path, SilhouetteIframe, reviewNls) {
 	
 return declare("davinci.review.editor.ReviewEditor", ModelEditor, {
 
 	isReadOnly: true,
 
 	constructor: function(element) {
-		this._bc = new dijit.layout.BorderContainer({}, element);
+		this._bc = new BorderContainer({}, element);
 		this.domNode = this._bc.domNode;
-		this._designCP = new dijit.layout.ContentPane({region:'center'});
+		this._designCP = new ContentPane({region:'center'});
 		this._bc.addChild(this._designCP);
 		var content = '<div class="silhouette_div_container">'+
 			'<span class="silhouetteiframe_object_container"></span>'+
@@ -37,57 +38,60 @@ return declare("davinci.review.editor.ReviewEditor", ModelEditor, {
 			}
 			var version = this.resourceFile.parent;
 			if (version.timeStamp == arg3.timeStamp) {
-				var node = davinci.review.model.resource.root.findFile(version.timeStamp,
-						this.resourceFile.name);
-				this.resourceFile = node;
+				davinci.review.model.resource.root.findFile(version.timeStamp, this.resourceFile.name).then(function(node) {
+					this.resourceFile = node;
+				}.bind(this));
 			}
 
 		});
 	},
-	save : function(){
-		// nooop.  editor not saved, comments are submited
+	save: function(){
+		// no-op.  editor not saved, comments are submitted
 	},
-	supports : function(something) {
+	supports: function(something) {
 		return something=="states";
 	},
 
-	getContext : function() {
+	getContext: function() {
 		return this.context;
 	},
 
-	setContent : function(filename, content) {
+	setContent: function(filename, content) {
+		
 		this.fileName = filename;
-		this.basePath = new davinci.model.Path(filename);
+		this.basePath = new Path(filename);
 		// URL will always be http://localhost:8080/davinci/review without / at the end at present
-		var locationPath = new davinci.model.Path(davinci.Workbench.location());
-		locationPath = locationPath.removeLastSegments().append("review"); // delete /maqetta
-		var baseUrl;
+		var locationPath = new Path(Runtime.location());
 
 		var designerName = this.resourceFile.parent.designerId;
 		// Compose a URL like http://localhost:8080/davinci/review/user/heguyi/ws/workspace/.review/snapshot/20100101/folder1/sample1.html
-		baseUrl = locationPath.append("user").append(designerName)
-		.append("ws").append("workspace").append(filename).toString();
+		var baseUrl = locationPath.append("user").append(designerName)
+			.append("ws").append("workspace").append(filename.replace(/:/g, "%3A")).toString();
 
 		var containerNode = dojo.query('.silhouette_div_container',this._designCP.domNode)[0];
 		this.context = new Context({
 			containerNode: containerNode,
-			baseURL : baseUrl,
-			fileName : this.fileName,
+			baseURL: baseUrl,
+			fileName: this.fileName,
 			resourceFile: this.resourceFile,
-			containerEditor:this,
-			iframeattrs:{'class':'silhouetteiframe_iframe'}
+			containerEditor: this,
+			iframeattrs: {'class': 'silhouetteiframe_iframe'}
 		});
 
 		this.title = dojo.doc.title;
 		this.context.setSource();
 	},
 
-	destroy : function() {
+	destroy: function() {
 		 //Clear any pending comment from view cache
-		if (this.context && this.context._commentView) {
-			this.context._commentView._setPendingEditComment(this, null);
+		if (this.context){
+			if(this.context._commentView) {
+				this.context._commentView._setPendingEditComment(this, null);
+			}
+			if(this.context.destroy){
+				this.context.destroy();
+			}
 		}
-		
 		this.inherited(arguments);
 	},
 

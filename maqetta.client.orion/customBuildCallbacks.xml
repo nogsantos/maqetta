@@ -10,16 +10,9 @@
 	<target name="noDefault">
 	</target>
 
-	<!-- ===================================================================== -->
-	<!-- Following logic invokes logic equivalent to UNIX command              -->
-	<!--    svn info . > WebContent/davinci/repositoryinfo.js                  -->
-	<!-- This is so that we can show the last svn checkin number in the        -->
-	<!-- "About daVinci" dialog.                                               -->
-	<!-- ===================================================================== -->
 	<property environment="env"/>
-	<property name="rep.info.file" value="${target.folder}/WebContent/davinci/repositoryinfo.js"/>
 
-    <!-- +++++++++++ Verify that "git" or "git.exe" is on the PATH +++++++++++ -->
+	<!-- +++++++++++ Verify that "git" or "git.exe" is on the PATH +++++++++++ -->
     <target name="verify.command.line.git">
         <!--
         <echo message="filepath=${env.PATH}"/>
@@ -57,35 +50,8 @@
         </loadfile>
 		<filter token="revision" value="${git.log}"/>
 		<copy file="${target.folder}/WebContent/pagedesigner.html" tofile="${target.folder}/WebContent/pagedesigner.html.tmp" filtering="true"/>
-		<copy file="${target.folder}/WebContent/welcome.html" tofile="${target.folder}/WebContent/welcome.html.tmp" filtering="true"/>
 		<delete file="${target.folder}/WebContent/pagedesigner.html"/>
-		<delete file="${target.folder}/WebContent/welcome.html"/>
 		<move file="${target.folder}/WebContent/pagedesigner.html.tmp" tofile="${target.folder}/WebContent/pagedesigner.html"/>
-		<move file="${target.folder}/WebContent/welcome.html.tmp" tofile="${target.folder}/WebContent/welcome.html"/>
-	</target>
-
-	<!--    Write git revision SHA1 to WebContent/davinci/repositoryinfo.js   -->
-	<target name="update.repositoryinfo.js" depends="check.command.line.git">
-        <exec executable="git" output="${env.MAQETTA_BUILD_DIR}/git-log.out" dir="${env.MAQETTA_BUILD_DIR}/repository/maqetta">
-            <arg value="log"/>
-            <arg value="-1"/>
-        </exec>
-        <loadfile srcfile="${env.MAQETTA_BUILD_DIR}/git-log.out" property="git.log">
-            <filterchain>
-                <headfilter lines="1"/>
-                <tokenfilter>
-                    <replaceregex pattern="commit " replace=""/>
-                </tokenfilter>
-                <striplinebreaks/>
-            </filterchain>
-        </loadfile>
-		<filter token="revision" value="${git.log}"/>
-        <copy file="${rep.info.file}" tofile="${rep.info.file}.tmp" filtering="true"/>
-        <tstamp>
-            <format property="maqBuildTime" timezone="GMT" pattern="yyyy-MM-dd'T'HH:mm:ss'Z'"/>
-        </tstamp>
-        <filter token="buildtime" value="${maqBuildTime}"/>
-        <move file="${rep.info.file}.tmp" tofile="${rep.info.file}" filtering="true"/>
 	</target>
 
 	<!-- ===================================================================== -->
@@ -174,85 +140,6 @@
 	<target name="pre.gather.bin.parts">
 	</target>
 	
-	
-	<target name="dojo.build" if="run.dojo.build" unless="dojo.build.exists">
-		<echo message="Doing dojo build" />
-		<property name="logExtension" value=".log"/>
-		<property name="logFile" value="${build.result.folder}/@dot${logExtension}"/>
-
-		<copy todir="${target.folder}" failonerror="true" overwrite="true" description="copying Dojo tools">
-				<fileset dir="${basedir}">
-					<include name="WebContent/util/"/>
-				</fileset>
-		</copy>
-		<java fork="true" failonerror="true" output="${logFile}" append="true" dir="${target.folder}/WebContent/util/buildscripts"
-			    maxmemory="1024m"
-				classpath="${target.folder}/WebContent/util/shrinksafe/js.jar;${target.folder}/WebContent/util/shrinksafe/shrinksafe.jar"
-				classname="org.mozilla.javascript.tools.shell.Main"
-				description="Run Dojo build script"
-				>
-				<arg value="${target.folder}/WebContent/dojo/dojo.js"/>
-				<arg value="baseUrl=${target.folder}/WebContent/dojo"/>
-				<arg value="load=build"/>
-				<arg value="profileFile=${target.folder}/davinci.profile.js"/>
-				<arg value="action=release"/>
-				<arg value="cssOptimize=comments.keepLines"/>
-				<arg value="layerOptimize=shrinksafe.keepLines"/>
-		</java>
-		
-		<!-- Copy over original app.css with comments.  There is no build option to preserve CSS comments AND inline. -->
-		<!--
-		<copy toFile="${target.folder}/WebContent/release/dojo/project/base/app.css" file="${target.folder}/WebContent/project/base/app.css" overwrite="true" />
-		-->
-		<!-- Copy over original workspace/maqetta folder -->
-		<!--
-		<copy todir="${target.folder}/WebContent/release/dojo/project/base/maqetta">
-			<fileset dir="${target.folder}/WebContent/project/base/maqetta"/>
-		</copy>
-		-->
-		<mkdir dir="${dojo.cache.directory}"/>
-		<!--
-		<copy todir="${dojo.cache.directory}">
-				<fileset dir="${target.folder}/WebContent/project/base/maqetta"/>
-		</copy>
-		-->
-		<echo message="caching dojo build.."/>
-		
-		<copy todir="${dojo.cache.directory}" failonerror="true" overwrite="true" description="move Dojo build">
-					<fileset dir="${target.folder}/WebContent/release/dojo">
-						<include name="davinci/"/>
-						<include name="system/"/>
-						<include name="dojo/"/>
-						<include name="dijit/"/>
-						<include name="dojox/"/>
-						<include name="eclipse/"/>
-			            <include name="preview/"/>
-					</fileset>
-		</copy>
-	</target>
-	
-	<target name="copy.dojo" if="run.dojo.build">
-		<delete dir="${target.folder}/WebContent/util"/>
-		<delete dir="${target.folder}/WebContent/dojo"/>
-		<delete dir="${target.folder}/WebContent/dijit"/>
-		<delete dir="${target.folder}/WebContent/system"/>
-		<delete dir="${target.folder}/WebContent/dojox"/>
-		<delete dir="${target.folder}/WebContent/davinci"/>
-		<delete dir="${target.folder}/WebContent/eclipse"/>
-	    <delete dir="${target.folder}/WebContent/preview"/>
-		<copy todir="${target.folder}/WebContent" failonerror="true" overwrite="true" description="Copy cached Dojo build">
-					<fileset dir="${dojo.cache.directory}">
-						<include name="davinci/"/>
-						<include name="system/"/>
-						<include name="dojo/"/>
-						<include name="dijit/"/>
-						<include name="dojox/"/>
-						<include name="eclipse/"/>
-			            <include name="preview/"/>
-					</fileset>
-		</copy>
-	</target>
-	
 	<!-- ===================================================================== -->
 	<!-- Steps to do after the target gather.bin.parts                         -->
 	<!-- Available parameters :                                                -->
@@ -260,19 +147,8 @@
 	<!--   target.folder - destination folder                                  -->
 	<!-- ===================================================================== -->
 	<target name="post.gather.bin.parts">
-		
-        <echo message="Inserting git describe information"/>
+		<echo message="Inserting git describe information"/>
         <antcall target="update.revisions"/>
-        <antcall target="update.repositoryinfo.js"/>
-		
-    	<condition property="dojo.build.exists">
-    		<available file="${dojo.cache.directory}" type="dir"/>
-    	</condition>
-		<echo message="Build dojo=${run.dojo.build}"/>
-		<antcall target="dojo.build"/>
-		<antcall target="copy.dojo"/>
-
-		
 	</target>
 
 	<!-- ===================================================================== -->

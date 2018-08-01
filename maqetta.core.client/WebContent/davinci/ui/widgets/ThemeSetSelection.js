@@ -1,23 +1,34 @@
 define(["dojo/_base/declare",
-        "dijit/_Templated",
-        "dijit/_Widget",
+				"dijit/_WidgetBase",
+				"dijit/_TemplatedMixin",
+				"dijit/_WidgetsInTemplateMixin",
         "davinci/library",
         "system/resource",
         "davinci/workbench/Preferences",
         "davinci/Runtime",
         "davinci/Workbench",
         "davinci/ve/commands/ChangeThemeCommand",
-        "dijit/Dialog",
+        "davinci/ui/Dialog",
         "dojo/i18n!davinci/ui/nls/ui",
         "dojo/i18n!dijit/nls/common",
-        "dijit/Dialog",
         "dijit/form/Button",
         "dijit/form/Select",
-        "davinci/Theme"
+        "davinci/Theme",
+        "dojo/text!./templates/ThemeSetSelection.html",
+
     	
-],function(declare, _Templated, _Widget,  Library, Resource,  Preferences, Runtime, Workbench,
+],function(declare, _WidgetBase, _TemplatedMixin, _WidgetsInTemplateMixin,  Library, Resource,  Preferences, Runtime, Workbench,
 			ChangeThemeCommand, Dialog, uiNLS, commonNLS,
-			Dialog, Button, Select, Theme){
+			Button, Select, Theme, templateString){
+
+	declare("davinci.ui.widgets.ThemeSetSelectionWidget", [_WidgetBase, _TemplatedMixin, _WidgetsInTemplateMixin], {
+		templateString: templateString,
+		widgetsInTemplate: true,
+
+		uiNLS: uiNLS,
+		commonNLS: commonNLS
+	});
+
 	return declare("davinci.ui.widgets.ThemeSetSelection", null, {
 
 	    workspaceOnly : false,
@@ -33,7 +44,7 @@ define(["dojo/_base/declare",
 
 	        this._dialog = new Dialog({
 	            title: langObj.selectTheme,
-	            style: "width: 372px"
+	            contentStyle: {width: 372}
 	        });
 	        dojo.connect(this._dialog, "onCancel", this, "onClose");
 	        var context = null;
@@ -47,11 +58,11 @@ define(["dojo/_base/declare",
 	            
 	        }
 	        this._selectedThemeSet = currentThemeSet;
-	        this._dialog.attr("content", this._getTemplate());
+	        this._dialog.attr("content", new davinci.ui.widgets.ThemeSetSelectionWidget({}));
 	        this._connections.push(dojo.connect(dijit.byId('theme_select_themeset_theme_select'), "onChange", this, "onChange"));
 	        this._connections.push(dojo.connect(dijit.byId('theme_select_desktop_theme_select'), "onChange", this, "onDesktopChange"));
 	        this._connections.push(dojo.connect(dijit.byId('theme_select_mobile_theme_select'), "onChange", this, "onMobileChange"));
-	        this._connections.push(dojo.connect(dijit.byId('theme_select_ok_button'), "onClick", this, "onOk"));
+	        this._connections.push(dojo.connect(this._dialog, "onExecute", this, "onOk"));
 	        this._connections.push(dojo.connect(dijit.byId('theme_select_cancel_button'), "onClick", this, "onClose"));
 	        
 	        this._connections.push(dojo.connect(dijit.byId('theme_select_android_select'), "onChange", this, "onAndroidThemeChange"));
@@ -69,7 +80,7 @@ define(["dojo/_base/declare",
 	
 	    addThemeSets: function(){
 	
-	        this._dojoThemeSets = Preferences.getPreferences("maqetta.dojo.themesets", Workbench.getProject());
+	        this._dojoThemeSets = Theme.getThemeSets( Workbench.getProject());
 	        if (!this._dojoThemeSets){ 
 	            this._dojoThemeSets =  Theme.dojoThemeSets;
 	            
@@ -90,7 +101,7 @@ define(["dojo/_base/declare",
 	    
 	    addThemes: function(themeSet){
 	
-	        this._themeData = Library.getThemes(Workbench.getProject(), this.workspaceOnly, true);
+	        this._themeData = Library.getThemes(Workbench.getProject(), this.workspaceOnly);
 	        var dtSelect = dijit.byId('theme_select_desktop_theme_select');
 	        dtSelect.options = [];
 	        var androidSelect = dijit.byId('theme_select_android_select');
@@ -381,8 +392,7 @@ define(["dojo/_base/declare",
 	        while (connection = this._connections.pop()){
 	            dojo.disconnect(connection);
 	        }
-	        this._dialog.destroyDescendants();
-	        this._dialog.destroy();
+	        this._dialog.destroyRecursive();
 	        delete this._dialog;
 	    },
 	    

@@ -3,10 +3,16 @@ package org.davinci.server.review;
 import java.io.Serializable;
 
 import java.lang.reflect.Field;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.SimpleTimeZone;
 
+import maqetta.core.server.user.ReviewManager;
+
+import org.davinci.server.review.user.Reviewer;
 import org.davinci.server.user.IDavinciProject;
 
 import org.davinci.server.util.JSONWriter;
@@ -29,7 +35,11 @@ public class Comment implements Serializable {
 
 	public static final String PAGE_STATE = "pageState";
 
+	public static final String PAGE_STATE_LIST = "pageStateList";
+
 	public static final String VIEW_SCENE = "viewScene";
+
+	public static final String VIEW_SCENE_LIST = "viewSceneList";
 
 	public static final String OWNER_ID = "ownerId";
 	
@@ -61,28 +71,6 @@ public class Comment implements Serializable {
 
 	public static final String REOPEN_VERSION = "reopenVersion";
 
-	public static final String SEVERITY = "severity";
-
-	public static final String TYPE = "type";
-
-	public static final String STATUS = "status";
-
-	public static final String SEVERITY_HIGH = "high";
-
-	public static final String SEVERITY_MEDIUM = "medium";
-
-	public static final String SEVERITY_LOW = "low";
-
-	public static final String TYPE_REQUIREMENT = "requirement";
-
-	public static final String TYPE_DEFECT = "defect";
-
-	public static final String TYPE_FIX = "fix";
-
-	public static final String STATUS_OPEN = "open";
-
-	public static final String STATUS_CLOSED = "Close";
-
 	// Indicates which fields should be included when transforming object to
 	// Json format.
 	private static Map<String, Boolean> fieldInclusionMap = new HashMap<String, Boolean>();
@@ -94,7 +82,11 @@ public class Comment implements Serializable {
 
 	private String pageState;
 
+	private String pageStateList;
+
 	private String viewScene;
+
+	private String viewSceneList;
 
 	private String drawingJson;
 
@@ -118,12 +110,6 @@ public class Comment implements Serializable {
 
 	private String email;
 
-	private String severity;
-
-	private String type;
-
-	private String status;
-
 	// Which project the comment belongs to
 	private IDavinciProject project;
 
@@ -136,7 +122,9 @@ public class Comment implements Serializable {
 	static {
 		fieldInclusionMap.put(Comment.ID, Boolean.TRUE);
 		fieldInclusionMap.put(Comment.PAGE_STATE, Boolean.TRUE);
+		fieldInclusionMap.put(Comment.PAGE_STATE_LIST, Boolean.TRUE);
 		fieldInclusionMap.put(Comment.VIEW_SCENE, Boolean.TRUE);
+		fieldInclusionMap.put(Comment.VIEW_SCENE_LIST, Boolean.TRUE);
 		fieldInclusionMap.put(Comment.DESIGNER_ID, Boolean.TRUE);
 		fieldInclusionMap.put(Comment.PAGE_NAME, Boolean.TRUE);
 		fieldInclusionMap.put(Comment.OWNER_ID, Boolean.TRUE);
@@ -148,9 +136,6 @@ public class Comment implements Serializable {
 //		fieldInclusionMap.put(Comment.ORDER, Boolean.TRUE);
 //		fieldInclusionMap.put(Comment.DEPTH, Boolean.TRUE);
 		fieldInclusionMap.put(Comment.DRAWING_JSON, Boolean.TRUE);
-		fieldInclusionMap.put(Comment.SEVERITY, Boolean.TRUE);
-		fieldInclusionMap.put(Comment.STATUS, Boolean.TRUE);
-		fieldInclusionMap.put(Comment.TYPE, Boolean.TRUE);
 
 	}
 
@@ -238,12 +223,28 @@ public class Comment implements Serializable {
 		this.pageState = pageState;
 	}
 
+	public String getPageStateList() {
+		return pageStateList;
+	}
+
+	public void setPageStateList(String pageStateList) {
+		this.pageStateList = pageStateList;
+	}
+
 	public String getViewScene() {
 		return viewScene;
 	}
 
 	public void setViewScene(String viewScene) {
 		this.viewScene = viewScene;
+	}
+
+	public String getViewSceneList() {
+		return viewSceneList;
+	}
+
+	public void setViewSceneList(String viewSceneList) {
+		this.viewSceneList = viewSceneList;
 	}
 
 	public IDavinciProject getProject() {
@@ -291,30 +292,6 @@ public class Comment implements Serializable {
 		this.reopenVersion = reopenVersion;
 	}
 
-	public String getSeverity() {
-		return severity;
-	}
-
-	public void setSeverity(String severity) {
-		this.severity = severity;
-	}
-
-	public String getType() {
-		return type;
-	}
-
-	public void setType(String type) {
-		this.type = type;
-	}
-
-	public String getStatus() {
-		return status;
-	}
-
-	public void setStatus(String status) {
-		this.status = status;
-	}
-
 	/**
 	 * Transform the object into a Json format.
 	 * 
@@ -336,14 +313,23 @@ public class Comment implements Serializable {
 			if (Boolean.TRUE.equals(inclusive)) {
 				try {
 					returnValue = fields[i].get(this);
-					if ("created".equals(fieldName))
-						returnValue = ((Date) returnValue).getTime();
+					if ("created".equals(fieldName)) {
+						SimpleDateFormat sdf = new SimpleDateFormat(Constants.DATE_PATTERN);
+						sdf.setCalendar(Calendar.getInstance(new SimpleTimeZone(0, "GMT")));
+						returnValue = sdf.format((Date) returnValue);
+					}
+					if ("email".equals(fieldName)) {
+						ReviewManager commentingManager = ReviewManager.getReviewManager();
+						Reviewer reviewerUser = commentingManager.getReviewer(returnValue.toString());
+						String displayName = reviewerUser.getDisplayName();
+						writer.addField("displayName", null != displayName ? displayName: returnValue.toString());
+					}
 				} catch (Exception e) {
 					returnValue = new Object();
 					e.printStackTrace();
 				}
-				writer.addField(fieldName, null == returnValue ? "" : returnValue.toString());
 				
+				writer.addField(fieldName, null == returnValue ? "" : returnValue.toString());
 			}
 		}
 		return writer.getJSON();

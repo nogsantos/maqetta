@@ -9,6 +9,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.logging.Logger;
 import java.util.Set;
 
 import org.davinci.server.user.IDavinciProject;
@@ -19,15 +20,17 @@ import org.davinci.server.review.Utils;
 import org.davinci.server.review.Version;
 import org.davinci.server.review.persistence.Marshaller;
 import org.davinci.server.review.persistence.Unmarshaller;
+import org.maqetta.server.ServerManager;
 
 public class ReviewCacheManager extends Thread {
 	static final public ReviewCacheManager $ = new ReviewCacheManager();
+	static final private Logger theLogger = Logger.getLogger(ReviewCacheManager.class.getName());
 
 	static final private String LAST_ACCESS_TIME = "lastAccessTime";
 
 	static final private long DESTROY_TIME = 600000; // 10 mins
 
-	static final private long SLEEP_TIME = 120000; // 2 mins
+	static final private long SLEEP_TIME = 30000; // 30 seconds
 
 	// Map<FileLocation, Hashtable<CommentId, Comment>>
 	private Hashtable<IDavinciProject, Hashtable<String, Comment>> reviewFilePool = new Hashtable<IDavinciProject, Hashtable<String, Comment>>();
@@ -38,32 +41,20 @@ public class ReviewCacheManager extends Thread {
 		stop = false;
 	}
 
-	public boolean updateComments(List<Comment> comments, boolean force) throws Exception {
+	public boolean updateComments(List<Comment> comments) {
 		IDavinciProject project;
 		Hashtable<String, Comment> reviewHash;
-		Comment fatherComment;
 		for (Comment comment : comments) {
 			project = comment.getProject();
 			synchronized(project){
 				reviewHash = loadReviewFile(project);
 
 				if (null == reviewHash) {
-					System.out.println("Can't find project " + project.getProjectName()
+					theLogger.severe("Can't find project " + project.getProjectName()
 							+ " review file for comment " + comment.getId());
 					continue;
 				}
 
-				boolean isFatherClosed = false;
-				if (!Utils.isBlank(comment.getReplyTo()) && !"0".equals(comment.getReplyTo())){
-					fatherComment = getTopParent(comment);
-					if(null != fatherComment && Comment.STATUS_CLOSED.equals(fatherComment.getStatus())){
-						isFatherClosed = true;
-					}
-				}
-				if(isFatherClosed && !force){
-					throw new Exception("The review with subject " + comment.getSubject()
-									+ " can't be added because this review thread is closed by others, please reload the review data.");
-				}
 				reviewHash.put(comment.getId(), comment);
 
 				// Update the last access time
@@ -73,12 +64,14 @@ public class ReviewCacheManager extends Thread {
 		return true;
 	}
 
+/* TODO: unused?
 	private Comment getTopParent(Comment comment){
-		while(!Utils.isBlank(comment.getReplyTo())&&!"0".equals(comment.getReplyTo())){
+		while(!Utils.isBlank(comment.getReplyTo())&&!"root".equals(comment.getReplyTo())){
 			comment = getComment(comment.getProject(), comment.getReplyTo());
 		}
 		return comment;
 	}
+*/
 
 	public List<Comment> getCommentsByPageName(IDavinciProject project, String pageName) {
 		// Load project's review information
@@ -309,7 +302,7 @@ public class ReviewCacheManager extends Thread {
 					continue;
 
 				oldOne = entry.getValue();
-				if (!Comment.STATUS_CLOSED.equalsIgnoreCase(oldOne.getStatus())&&parentVersion.equals(oldOne.getPageVersion())) {
+				if (parentVersion.equals(oldOne.getPageVersion())) {
 					newOne = (Comment) Utils.deepClone(oldOne);
 
 					// Re-calculate the comment id

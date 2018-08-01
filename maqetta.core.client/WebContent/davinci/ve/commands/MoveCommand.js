@@ -1,14 +1,17 @@
 define([
     	"dojo/_base/declare",
+    	"dojo/dom-geometry",
     	"davinci/ve/widget",
-    	"davinci/ve/States"
-], function(declare, Widget, States){
+    	"davinci/ve/States",
+    	"davinci/ve/utils/StyleArray",
+    	"davinci/ve/utils/GeomUtils"
+], function(declare, domGeom, Widget, States, StyleArray, GeomUtils){
 
 
 return declare("davinci.ve.commands.MoveCommand", null, {
 	name: "move",
 
-	constructor: function(widget, left, top, commandForXYDeltas){
+	constructor: function(widget, left, top, commandForXYDeltas, oldBox, applyToWhichState, disableSnapping){
 		this._id = (widget ? widget.id : undefined);
 		this._context = widget.getContext();
 		
@@ -20,6 +23,16 @@ return declare("davinci.ve.commands.MoveCommand", null, {
 		// to work with snapping such that selected widgets 2-N are shifted
 		// by the same amount as the first widget.
 		this._commandForXYDeltas = commandForXYDeltas;
+		
+		this._oldBox = oldBox;
+		
+		// applyToWhichState controls whether style change is attached to Normal or other states
+		//   (null|undefined|"undefined"|"Normal") => apply to Normal state
+		//   other string => apply to that particular state
+		this._applyToStateIndex = (!applyToWhichState || applyToWhichState=='Normal' || applyToWhichState=='undefined')
+									? 'undefined' : applyToWhichState;
+		
+		this._disableSnapping = disableSnapping;
 	},
 
 	execute: function(){
@@ -27,11 +40,7 @@ return declare("davinci.ve.commands.MoveCommand", null, {
 			return;
 		}
 		var widget = Widget.byId(this._id);
-		if(!widget){
-			return;
-		}
-		var node = widget.getStyleNode();
-		if(!node){
+		if(!widget || !widget.domNode){
 			return;
 		}
 		var context = this._context;
@@ -39,7 +48,6 @@ return declare("davinci.ve.commands.MoveCommand", null, {
 		if(!this._oldBox){
 			var box = widget.getMarginBox();
 			this._oldBox = {l: box.l, t: box.t, w:box.w, h:box.h};
-			this._oldPosition = node.style.position;
 		}
 		if(!widget.domNode.offsetParent){
 			return;
@@ -48,57 +56,71 @@ return declare("davinci.ve.commands.MoveCommand", null, {
 		if(!offsetParentPageBox){
 			return;
 		}
-		
-		this._state = States.getState();
-		var isNormalState = States.isNormalState(this._state);
-
 		if(this._commandForXYDeltas){
 			this._newBox.l = this._oldBox.l + this._commandForXYDeltas._deltaX;
 			this._newBox.t = this._oldBox.t + this._commandForXYDeltas._deltaY;
 		}else{
-			if(context && context._snapX){
+			if(!this._disableSnapping && context && context._snapX){
 				var w = this._oldBox.w;
-				var snapX_relative = context._snapX.x - offsetParentPageBox.x;
 				if(context._snapX.typeRefObj=="left"){
-					this._newBox.l = snapX_relative;
+					this._newBox.l = context._snapX.x;
 				}else if(w && context._snapX.typeRefObj=="right"){
-					this._newBox.l = snapX_relative - w;
+					this._newBox.l = context._snapX.x - w;
 				}else if(w && context._snapX.typeRefObj=="center"){
-					this._newBox.l = snapX_relative - w/2;
+					this._newBox.l = context._snapX.x - w/2;
 				}
 			}
-			if(context && context._snapY){
+			if(!this._disableSnapping && context && context._snapY){
 				var h = this._oldBox.h;
-				var snapY_relative = context._snapY.y - offsetParentPageBox.y;
 				if(context._snapY.typeRefObj=="top"){
-					this._newBox.t = snapY_relative;
+					this._newBox.t = context._snapY.y;
 				}else if(h && context._snapY.typeRefObj=="bottom"){
-					this._newBox.t = snapY_relative - h;
+					this._newBox.t = context._snapY.y - h;
 				}else if(h && context._snapY.typeRefObj=="middle"){
-					this._newBox.t = snapY_relative - h/2;
+					this._newBox.t = context._snapY.y - h/2;
 				}
 			}
 		}
+		// These two values might be used by subsequent MoveCommands via this._commandForXYDeltas
 		this._deltaX = this._newBox.l - this._oldBox.l;
 		this._deltaY = this._newBox.t - this._oldBox.t;
 
-		// Adjust for parent border width
-        var parentBorderLeft = parseInt(dojo.style(widget.domNode.offsetParent, 'borderLeftWidth'));
-        var parentBorderTop = parseInt(dojo.style(widget.domNode.offsetParent, 'borderTopWidth'));
-		//var cleanValues = { left: this._newBox.l - parentBorderLeft, top: this._newBox.t - parentBorderTop};
-        var newLeft = this._newBox.l - parentBorderLeft;
-        var newTop = this._newBox.t - parentBorderTop;
-		var cleanValues = [{ left: newLeft}, {top: newTop}];
-		States.setStyle(widget, this._state, cleanValues, isNormalState);	
-		
-		if (isNormalState) {
-			node.style.position = "absolute";
-			var size = { l: newLeft, t: newTop };
-			widget.setMarginBox( size);
+		// this._newBox holds page-relative coordinates.
+		// Subtract off offsetParent's borderbox coordinate (in page-relative coords from dojo.position), and
+		// subtract off offsetParent's border, because left: and top: are relative to offsetParent's borderbox
+		var offsetParentBorderBoxPageCoords = GeomUtils.getBorderBoxPageCoords(widget.domNode.offsetParent);
+		var borderExtents = domGeom.getBorderExtents(widget.domNode.offsetParent);
+		var newLeft = this._newBox.l - offsetParentBorderBoxPageCoords.l - borderExtents.l;
+		var newTop = this._newBox.t - offsetParentBorderBoxPageCoords.t - borderExtents.t;
+		var newStyleArray = [{left:newLeft+'px'},{top:newTop+'px'}] ;
+        var styleValuesAllStates = widget.getStyleValuesAllStates();
+		this._oldStyleValuesAllStates = dojo.clone(styleValuesAllStates);
+		if(this._oldBox){
+			var oldLeft = this._oldBox.l - offsetParentBorderBoxPageCoords.l - borderExtents.l;
+			var oldTop = this._oldBox.t - offsetParentBorderBoxPageCoords.t - borderExtents.t;
+			this._oldStyleValuesAllStates[this._applyToStateIndex] = 
+					StyleArray.mergeStyleArrays(this._oldStyleValuesAllStates[this._applyToStateIndex], 
+								[{left:oldLeft+'px'}, {top:oldTop+'px'}]);
 		}
-		
+		if(styleValuesAllStates[this._applyToStateIndex]){
+			styleValuesAllStates[this._applyToStateIndex] = StyleArray.mergeStyleArrays(styleValuesAllStates[this._applyToStateIndex], newStyleArray);
+		}else{
+			styleValuesAllStates[this._applyToStateIndex] = newStyleArray;
+		}
+		widget.setStyleValuesAllStates(styleValuesAllStates);
+		var currentStatesList = States.getStatesListCurrent(widget.domNode);
+		var styleValuesCanvas = StyleArray.mergeStyleArrays([], styleValuesAllStates['undefined']);
+		for(var i=0; i<currentStatesList.length; i++){
+			if(styleValuesAllStates[currentStatesList[i]]){
+				styleValuesCanvas = StyleArray.mergeStyleArrays(styleValuesCanvas, styleValuesAllStates[currentStatesList[i]]);
+			}
+		}
+		widget.setStyleValuesCanvas(styleValuesCanvas);
+		widget.setStyleValuesModel(styleValuesAllStates['undefined']);
+		widget.refresh();
+
 		// Recompute styling properties in case we aren't in Normal state
-		States.resetState(widget);
+		States.resetState(widget.domNode);
 		
 		//FIXME: Various widget changed events (/davinci/ui/widget*Changed) need to be cleaned up.
 		// I defined yet another one here (widgetPropertiesChanged) just before Preview3
@@ -117,19 +139,20 @@ return declare("davinci.ve.commands.MoveCommand", null, {
 		if(!widget){
 			return;
 		}
-		var node = widget.getStyleNode();
-		if(!node){
-			return;
-		}
 
-		widget.setMarginBox( this._oldBox);
-		node.style.position = this._oldPosition;
+		var styleValuesAllStates = this._oldStyleValuesAllStates;
+		var currentStateIndex = this._applyToStateIndex;
+		widget.setStyleValuesAllStates(styleValuesAllStates);
+		var styleValuesCanvas = StyleArray.mergeStyleArrays(styleValuesAllStates['undefined'], styleValuesAllStates[currentStateIndex]);
+		widget.setStyleValuesCanvas(styleValuesCanvas);
+		widget.setStyleValuesModel(this._oldStyleValuesAllStates['undefined']);
+		
+		widget.refresh();
 		
 		// Recompute styling properties in case we aren't in Normal state
-		davinci.ve.states.resetState(widget);
+		davinci.ve.states.resetState(widget.domNode);
 		
 		dojo.publish("/davinci/ui/widgetPropertiesChanged",[[widget]]);
 	}
-
 });
 });

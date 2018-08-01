@@ -50,9 +50,9 @@ return declare("davinci.html.CSSImport", CSSElement, {
 	},
 	
 	close: function(includeImports) {
-		require(["dojo/_base/connect"], function(connect) {
-			connect.publish("davinci/model/closeModel", [this]);
-		});
+		// the return of the CSSFile model needs to happen in the import instead of the CSSFile
+		// if we return it in the CSSFile close we end up returning it twice due of the visit logic
+		require("davinci/model/Factory").closeModel(this.cssFile); 
 		if (this.connection) {
 			dojo.disconnect(this.connection);
 		}
@@ -68,9 +68,10 @@ return declare("davinci.html.CSSImport", CSSElement, {
 		var path = new Path(p.url || p.fileName);
 		path = path.getParentPath().append(this.url);
 		var myUrl = path.toString();
-		this.cssFile = new CSSFile({
+       	// have to use the require or we get a circular dependency 
+		this.cssFile = require("davinci/model/Factory").getModel({
 			url : myUrl,
-			loader : this.loader || p.loader,
+			loader : this.parent.loader,
 			includeImports : this.parent.includeImports || includeImports
 		});
 		this.cssFile.relativeURL = this.url;
@@ -79,5 +80,8 @@ return declare("davinci.html.CSSImport", CSSElement, {
 
 });
 });
+
+
+
 
 

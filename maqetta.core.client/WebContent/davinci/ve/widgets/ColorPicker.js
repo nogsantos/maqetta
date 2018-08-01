@@ -21,7 +21,8 @@ define(["dojo/_base/declare",
 			
 			this.inherited(arguments);
 
-			this.domNode.removeAttribute("dojoType");
+			this.domNode.removeAttribute("data-dojo-type");
+			this.domNode.removeAttribute("dojoType"); // backwards compat
 
 			this._statics = ["", davinci.ve.widgets.ColorPicker.divider, veNLS.colorPicker, veNLS.removeValue];
 			this._run = {};
@@ -49,7 +50,7 @@ define(["dojo/_base/declare",
 			}
 			
 			this._store = new ColorStore({values:displayValues, noncolors:this._statics});
-			this._dropDown = new ComboBox({store:this._store, required: false, labelType:'html', labelAttr:'label', style:'width:100%'});
+			this._dropDown = new ComboBox({store:this._store, required: false, autoComplete:false, labelType:'html', labelAttr:'label', style:'width:100%'});
 			dojo.connect(this._dropDown, "onChange", this, "_onChange");
 			var top = dojo.doc.createElement("div");
 			dojo.addClass(top, 'colorPicker');
@@ -75,7 +76,7 @@ define(["dojo/_base/declare",
 			this._dropDown.set("value", this._value, true);
 
 			var content = this._colorPickerFlat;
-			var	dialog = new TooltipDialog({title: veNLS.selectColor, content: content});
+			var	dialog = new TooltipDialog({id: 'maqetta_prop_tooltip_color_picker', title: veNLS.selectColor, content: content});
 			dijit.popup.moveOffScreen(dialog.domNode);
 			var opened = false;
 			var closePopup = function(target){ return function(){
@@ -118,6 +119,7 @@ define(["dojo/_base/declare",
 							}
 							
 							closePopup();
+							dialog.destroy();
 							/*
 							if(!colorpicker.canceled && oldValue!=colorpicker.get("value")) 
 								target.onChange();

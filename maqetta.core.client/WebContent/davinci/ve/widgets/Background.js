@@ -1,4 +1,5 @@
 define(["dojo/_base/declare",
+        "dojo/Deferred",
         "davinci/workbench/WidgetLite",
         "davinci/ve/widgets/ColorPickerFlat",
         "davinci/ve/widgets/ColorStore",
@@ -6,25 +7,26 @@ define(["dojo/_base/declare",
         "dijit/form/ComboBox",
         "davinci/ve/widgets/BackgroundDialog",
         "davinci/Workbench",
-      
+        "davinci/ve/utils/URLRewrite",
+        "davinci/model/Path",
         "dojo/i18n!davinci/ve/nls/ve",
         "dojo/i18n!dijit/nls/common",
         "davinci/ve/utils/CssUtils",
         "davinci/ve/widgets/ColorPicker"
         
 
-],function(declare, WidgetLite, ColorPickerFlat, ColorStore, MutableStore, ComboBox,BackgroundDialog, Workbench, veNLS, commonNLS, CssUtils, ColorPicker){
+],function(declare, Deferred, WidgetLite, ColorPickerFlat, ColorStore, MutableStore, ComboBox,BackgroundDialog, Workbench, URLRewrite, Path, veNLS, commonNLS, CssUtils, ColorPicker){
 	var idPrefix = "davinci_ve_widgets_properties_border_generated"
-	var	__id=0;
-	function getId(){
-		return  (idPrefix + (__id++));
-	}
+	var	__id=0,
+		getId = function(){
+			return idPrefix + (__id++);
+		};
+
 	return declare("davinci.ve.widgets.Background", [WidgetLite], {
-		__id : 0,
-		
-		data : null,
-		
-		
+		__id: 0,
+
+		data: null,
+
 		buildRendering: function(){
 			this.domNode =   dojo.doc.createElement("div",{style:"width:100%"});
 			this._textFieldId = getId();
@@ -126,11 +128,11 @@ define(["dojo/_base/declare",
 			this._button = dojo.byId(this._buttonId);
 			dojo.connect(this._button,"onclick",this,function(){
 				//FIXME: this._valueArray = widget._valueArrayNew;
-	
-				var background = new BackgroundDialog({});	
-				var executor = dojo.hitch(this, function(background){
-					var context = (this._cascade && this._cascade._widget && this._cascade._widget.getContext)
+				var context = (this._cascade && this._cascade._widget && this._cascade._widget.getContext)
 						? this._cascade._widget.getContext() : null;
+	
+				var background = new BackgroundDialog({context:context});	
+				var executor = dojo.hitch(this, function(background){
 					if(!context){
 						console.error('Background.js. no context');
 						return;
@@ -147,14 +149,11 @@ define(["dojo/_base/declare",
 					// There are actually two bits of async logic that make things difficult.
 					// First, dojo's onchange handlers are launched in a timeout.
 					// Second, Cascade.js modal dialogs are also async.
-					if(!context.cascadeBatch){
-						context.cascadeBatch = {};
-					}
-					var cascadeBatch = context.cascadeBatch;
+					var cascadeBatch = context.cascadeBatch = {};
 					var propNum = 0;
 					var propList = cascadeBatch.propList = [];	// Array of properties whose values actually changed
 					var actions = cascadeBatch.actions = {};	// per-prop: logic to change the combox box on properties palette
-					var deferreds = cascadeBatch.deferreds = {};	// per-prop: dojo.Deferred objects to help with managing async issues
+					var deferreds = cascadeBatch.deferreds = {};	// per-prop: Deferred objects to help with managing async issues
 					cascadeBatch.askUserResponse = undefined;
 					
 					// Call buildBackgroundImage to convert the bgddata object
@@ -173,13 +172,25 @@ define(["dojo/_base/declare",
 										o.propPaletteWidget._comboBoxUpdateDueTo = 'backgroundDialog';
 										o.propPaletteWidget.set('value', newValue);
 									}, o, newValue);
-									deferreds[propName] = new dojo.Deferred();
+									deferreds[propName] = new Deferred();
 								}
 							}
 						}
 						var propName = 'background-image';
 						var o = xref[propName];
 						var a = CssUtils.buildBackgroundImage(background.bgddata);
+						for(var i=0; i<a.length; i++){
+							var val = a[i];
+							if(URLRewrite.containsUrl(val) && !URLRewrite.isAbsolute(val)){
+								var urlInside = URLRewrite.getUrl(val);
+								if(urlInside){
+									var urlPath = new Path(urlInside);
+									var relativeUrl = urlPath.toString();
+									val = 'url(\'' + relativeUrl + '\')';
+								}
+								a[i] = val;
+							}
+						}
 						var newValue;
 						if(a.length == 0){
 							newValue = '';
@@ -199,7 +210,7 @@ define(["dojo/_base/declare",
 								o.propPaletteWidget._comboBoxUpdateDueTo = 'backgroundDialog';
 								o.propPaletteWidget.set('value', newValue);
 							}, o, newValue);
-							deferreds[propName] = new dojo.Deferred();
+							deferreds[propName] = new Deferred();
 						}
 						for(var i=0; i<propList.length; i++){
 							var propName = propList[i];
@@ -257,6 +268,24 @@ define(["dojo/_base/declare",
 				}
 				this._onChange(event);
 			}));
+			this.connect(this._comboBox, 'onFocus', dojo.hitch(this, function(event){
+				// If focus goes into any of the background text fields, then
+				// clear out any leftover _valueArrayNew values on cascade objects
+				var xref = davinci.ve._BackgroundWidgets;
+				for(var propName in xref){
+					var o = xref[propName];
+					var cascade = o.propPaletteWidget._cascade;
+					if(cascade){
+						cascade._valueArrayNew = undefined;
+					}
+				}
+				var context = (this._cascade && this._cascade._widget && this._cascade._widget.getContext)
+						? this._cascade._widget.getContext() : null;
+				if(context){
+					delete context.cascadeBatch;
+				}
+			}));
+			this._maqStartupComplete = true;
 		},
 		/*
 		 * This is the base location for the file in question.  Used to caluclate relativity for url(...)
@@ -322,6 +351,9 @@ define(["dojo/_base/declare",
 		},
 		
 		_setReadOnlyAttr: function(isReadOnly){
+			if(!this._maqStartupComplete){
+				return;
+			}
 			this._isReadOnly = isReadOnly;
 			this._comboBox.set("disabled", isReadOnly);
 			this._button.disabled = isReadOnly;
